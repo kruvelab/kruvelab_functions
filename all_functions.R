@@ -21,17 +21,62 @@ library(tidyselect)
 library(stringr)
 library(caret)
 
+# By start of April:
 
+# 1) re-check all functions - updates/new fns?
+# 2) re-structure? + read_me in github
+
+# GENERAL about functions:
 # all dataframe functions --> vectorize!
-# naming - lowercase and underscores (ecept names), 
-# name same for same variable everywhere
+# naming - lowercase and underscores (except names)!!! 
+# name same for same variable everywhere!!!
+# specifying input types in all function
+# which libraries are actually needed?
+
+
+
+# Similarity - Anneli
+## all similarity functions unification (applicable for both FP and mass-spec? input of what it is defined in function?)
+## similarites function from Harry?
+# binning function - Yvonne
+
+# descriptors - Helen
+## one general function for calculating all descriptors and fingerprints
+# PaDEL - calculating for individual smiles vs dataframe? - Anneli
+# Eluent composition - Anneli
+
+# MassBank - Yvonne
+
+# modelling functions - Helen
+## IE functions from Anneli & Helen (applying the models)
+## linearity - Helen
+
+# Querying information (based on Drew's getMetadata) - Drew
+## one general function for querying metadata (from: SMILES; to: Standardized_smiles etc)
+
+# MSDIAL workflow functions - Anneli and Helen
+## MSDIAL -> .txt alignment file -> create .ms files -> function to put files to SIRIUS -> summary table of SIRIUS results
+## + merging with suspect list - Anneli and Helen
+## centering out! 
+## update SIRIUS functions to be compatible with SIRIUS version 5
+## read in ID from the back and remove non-numbers for when name has MS-DIAL ID nr
+
+# progenesis - Harry
+
+# toxicity functions from Pille's work (that is not in MS2Tox) - Yvonne & Anneli (scraping)
+
+
+
+
+
+
 
 # **************************************
 # ---- Eluent composition functions ----
 # **************************************
 
-
-organicpercentage <- function(eluent_parameters,ret_time){
+organicpercentage <- function(eluent_parameters = tibble(),
+                              ret_time = numeric()){
   ApproxFun <- approxfun(x = eluent_parameters$time, y = eluent_parameters$B)
   organic <- ApproxFun(ret_time)
   return(organic)
@@ -125,7 +170,7 @@ smiles_to_standardinchi <- Vectorize(smiles_to_standardinchi)
 
 
 # *********************************************
-# ---- Functions for pretreating .ms files ----
+# ---- Functions for pretreating .ms files: CENTERING OUT! ----
 # *********************************************
 
 centroid <- function(data, 
@@ -1199,6 +1244,7 @@ Dice_score = function(fingerprint1, fingerprint2) {
 }
 Vectorize(Dice_score)
 
+# same length fingerprints?? what about mass spectra?
 similarity = function(fingerprint1, fingerprint2, is_binary) {
   if(is_binary){
     return(Dice_score(fingerprint1, fingerprint2))
