@@ -31,7 +31,8 @@ library(caret)
 # **************************************
 
 
-organicpercentage <- function(eluent_parameters,ret_time){
+organicpercentage <- function(eluent_parameters = tibble(),
+                              ret_time = numeric()){
   ApproxFun <- approxfun(x = eluent_parameters$time, y = eluent_parameters$B)
   organic <- ApproxFun(ret_time)
   return(organic)
