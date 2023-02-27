@@ -4,20 +4,20 @@
 library(tidyverse)
 library(rcdklibs)
 library(rcdk)
-library(stringr)
-library(berryFunctions)
+library(stringr) #Anneli thinks that this also comes with tidyverse
+library(berryFunctions) #what is this?
 library(rjson)
 library(glue)
 library(readxl)
 #library(MS2Tox)
-library(dplyr)
+library(dplyr) #ANneli thinks this is in tidyverse
 library(rlist)
 library(Rdisop)
-library(tibble)
+library(tibble) #Anneli thinks that this is in tidyverse
 library(readr)
 library(magrittr)
 library(xgboost)
-library(tidyselect)
+library(tidyselect) #is this needed?
 library(stringr)
 library(caret)
 
@@ -75,26 +75,36 @@ library(caret)
 # ---- Eluent composition functions ----
 # **************************************
 
-organicpercentage <- function(eluent_parameters = tibble(),
-                              ret_time = numeric()){
-  ApproxFun <- approxfun(x = eluent_parameters$time, y = eluent_parameters$B)
-  organic <- ApproxFun(ret_time)
+organic_percentage = function(time_column_name,
+                             organic_percent_column_name, 
+                             gradient_dataframe = tibble(),
+                             ret_time = numeric()){
+  time = gradient_dataframe[[deparse(substitute(time_column_name))]]
+  B = gradient_dataframe[[deparse(substitute(organic_percent_column_name))]]
+  ApproxFun = approxfun(x = time, 
+                        y = B)
+  organic = ApproxFun(ret_time)
   return(organic)
 }
+organic_percentage() = Vectorize(organic_percentage)
 
-polarityindex <- function(organic,organic_modifier){
-  polarity_index <- case_when(
-    organic_modifier == "MeCN" ~ (organic/100)*5.1+((100-organic)/100)*10.2,
-    organic_modifier == "MeOH" ~ (organic/100)*5.1+((100-organic)/100)*10.2)
+polarity_index = function(organic_percent = numeric(), 
+                          organic_modifier = character()){
+  polarity_index = case_when(
+    organic_modifier == "MeCN" ~ (organic_percent/100)*5.1+((100-organic_percent)/100)*10.2,
+    organic_modifier == "MeOH" ~ (organic_percent/100)*5.1+((100-organic_percent)/100)*10.2)
   return(polarity_index)
 }
+polarity_index = Vectorize(polarity_index)
 
-surfacetension <- function(organic,organic_modifier){
-  surface_tension <- case_when(
-    organic_modifier == "MeCN" ~ 71.76-2.906*71.76*(organic/100)+(7.138*27.86+2.906*71.76-71.76)*(organic/100)^2+(27.86-7.138*27.86)*(organic/100)^3,
-    organic_modifier == "MeOH" ~ 71.76-2.245*71.76*(organic/100)+(5.625*22.12+2.245*71.76-71.76)*(organic/100)^2+(22.12-5.625*22.12)*(organic/100)^3)
+surface_tension = function(organic_percentage = numeric(),
+                          organic_modifier = "MeCN"){
+  surface_tension = case_when(
+    organic_modifier == "MeCN" ~ 71.76-2.906*71.76*(organic_percentage/100)+(7.138*27.86+2.906*71.76-71.76)*(organic_percentage/100)^2+(27.86-7.138*27.86)*(organic_percentage/100)^3,
+    organic_modifier == "MeOH" ~ 71.76-2.245*71.76*(organic_percentage/100)+(5.625*22.12+2.245*71.76-71.76)*(organic_percentage/100)^2+(22.12-5.625*22.12)*(organic_percentage/100)^3)
   return(surface_tension)
 }
+surface_tension = Vectorize(surface_tension)
 
 viscosity <- function(organic,organic_modifier){
   viscosity <- case_when(
