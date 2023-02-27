@@ -75,18 +75,19 @@ library(caret)
 # ---- Eluent composition functions ----
 # **************************************
 
-organic_percentage = function(time_column_name,
-                             organic_percent_column_name, 
-                             gradient_dataframe = tibble(),
-                             ret_time = numeric()){
+organic_percentage = function(gradient_dataframe = tibble(),
+                             ret_time = numeric(),
+                             time_column_name,
+                             organic_percent_column_name){
   time = gradient_dataframe[[deparse(substitute(time_column_name))]]
+  print(time)
   B = gradient_dataframe[[deparse(substitute(organic_percent_column_name))]]
   ApproxFun = approxfun(x = time, 
                         y = B)
   organic = ApproxFun(ret_time)
   return(organic)
 }
-organic_percentage() = Vectorize(organic_percentage)
+# organic_percentage = Vectorize(organic_percentage)
 
 polarity_index = function(organic_percent = numeric(), 
                           organic_modifier = character()){
@@ -95,7 +96,7 @@ polarity_index = function(organic_percent = numeric(),
     organic_modifier == "MeOH" ~ (organic_percent/100)*5.1+((100-organic_percent)/100)*10.2)
   return(polarity_index)
 }
-polarity_index = Vectorize(polarity_index)
+# polarity_index = Vectorize(polarity_index)
 
 surface_tension = function(organic_percentage = numeric(),
                           organic_modifier = "MeCN"){
@@ -104,29 +105,40 @@ surface_tension = function(organic_percentage = numeric(),
     organic_modifier == "MeOH" ~ 71.76-2.245*71.76*(organic_percentage/100)+(5.625*22.12+2.245*71.76-71.76)*(organic_percentage/100)^2+(22.12-5.625*22.12)*(organic_percentage/100)^3)
   return(surface_tension)
 }
-surface_tension = Vectorize(surface_tension)
+# surface_tension = Vectorize(surface_tension)
 
-viscosity <- function(organic,organic_modifier){
-  viscosity <- case_when(
-    organic_modifier == "MeCN" ~ (-0.000103849885417527)*organic^2+0.00435719229180079*organic+0.884232851261593,
-    organic_modifier == "MeOH" ~ (-0.00035908)*organic^2+0.031972067*organic+0.90273943)
+viscosity = function(organic_percentage = numeric(),
+                      organic_modifier = "MeCN"){
+  viscosity = case_when(
+    organic_modifier == "MeCN" ~ (-0.000103849885417527)*organic_percentage^2+0.00435719229180079*organic_percentage+0.884232851261593,
+    organic_modifier == "MeOH" ~ (-0.00035908)*organic_percentage^2+0.031972067*organic_percentage+0.90273943)
   return(viscosity)
 }
+# viscosity = Vectorize(viscosity)
 
-add_mobile_phase_composition = function(data,
-                                        eluent_file_name,
+add_mobile_phase_composition = function(data = tibble(),
+                                        ret_time,
                                         organic_modifier = "MeCN",
-                                        pH_aq = 7.0) {
-  eluent = read_delim(eluent_file_name,
-                      delim = ",",
-                      col_names = TRUE)
+                                        pH_aq = 7.0,
+                                        gradient_file_name = character(),
+                                        time_column_name,
+                                        organic_percent_column_name) {
   
-  # Joining all collected data to one tibble, removing missing values, calculating slopes
+  gradient = read_delim(gradient_file_name,
+                        col_types = cols())
+  print(gradient)
+  
   data = data %>%
-    mutate(organic_modifier_percentage = organicpercentage(eluent,RT),
-           viscosity = viscosity(organic_modifier_percentage,organic_modifier),
-           surface_tension = surfacetension(organic_modifier_percentage,organic_modifier),
-           polarity_index = polarityindex(organic_modifier_percentage,organic_modifier), 
+    mutate(organic_percent = organic_percentage(gradient, 
+                                                ret_time,
+                                                time_column_name,
+                                                organic_percent_column_name),
+           viscosity = viscosity(organic_percent, 
+                                 organic_modifier),
+           surface_tension = surfacetension(organic_percent, 
+                                            organic_modifier),
+           polarity_index = polarityindex(organic_percent, 
+                                          organic_modifier), 
            organic_modifier = organic_modifier,
            pH_aq = pH_aq)
   return(data)
