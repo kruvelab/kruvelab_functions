@@ -5,7 +5,7 @@ library(tidyverse)
 library(rcdklibs)
 library(rcdk)
 library(stringr) #Anneli thinks that this also comes with tidyverse
-library(berryFunctions) #what is this?
+#library(berryFunctions) #what is this?
 library(rjson)
 library(glue)
 library(readxl)
@@ -79,7 +79,10 @@ organic_percentage = function(gradient_dataframe = tibble(),
                              ret_time = numeric(),
                              time_column_name,
                              organic_percent_column_name){
+  print(time_column_name)
+  print(deparse(substitute(time_column_name)))
   time = gradient_dataframe[[deparse(substitute(time_column_name))]]
+  #time = gradient_dataframe[[time_column_name))]]
   print(time)
   B = gradient_dataframe[[deparse(substitute(organic_percent_column_name))]]
   ApproxFun = approxfun(x = time, 
@@ -127,7 +130,7 @@ add_mobile_phase_composition = function(data = tibble(),
   gradient = read_delim(gradient_file_name,
                         col_types = cols())
   print(gradient)
-  
+  print(time_column_name)
   data = data %>%
     mutate(organic_percent = organic_percentage(gradient, 
                                                 ret_time,
