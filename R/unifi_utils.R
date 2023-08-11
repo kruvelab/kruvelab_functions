@@ -2,52 +2,51 @@
 #' Convert mzml to ms files (Unifi Export)
 #'
 #' Use this function to convert processed mzml spectra files, exported from Unifi, to a spectra object (MSnbase), and generate .ms files for use in SIRIUS, MetFrag, and MassBank.
-#' @import library(tidyverse)
-#' @import library(Spectra)
+#' @import c(`tidyverse`, `Spectra`, `MSnbase`, `BiocManager`)
 #' @param filePath The path to the folder containing the .mzml files exported from Unifi
 #' @param create_ms logical: choose to create .ms files (default = TRUE)
 #' @return Spectra object (MSnbase)
 #' @export
 read_mzML <- function(filePath, create_ms = TRUE) {
   files <- dir(filePath, pattern = ".mzml", full.names = TRUE)
-  
+
   # Using MSBackend Spectra
-  sps <- Spectra(files, source = MsBackendMzR())
-  
+  sps <- Spectra::Spectra(files, source = MsBackendMzR())
+
   # Filter empty spectra
   sps <- filterEmptySpectra(sps)
-  
+
   # Extract MS2 peaks
-  pks <- peaksData(sps)
-  
+  pks <- Spectra::peaksData(sps)
+
   if (create_ms == TRUE) {
     dir.create("ms", showWarnings = FALSE)
   }
-  
+
   for (i in 1:length(sps)) {
     # precursorMz mz
     ms1mz <- sps@backend@spectraData@listData[["precursorMz"]][i]
-    
+
     # precorsorMz intensity
     ms1int <- sps@backend@spectraData@listData[["precursorIntensity"]][i]
-    
+
     # precorsorMz rt
     ms1rt <- sps@backend@spectraData@listData[["rtime"]][i]
-    
+
     # fragment mz and int
     ms2spec <- as.data.frame(pks[[i]])
-    
+
     if(create_ms == TRUE) {
-      
+
       # create feature name
       featureID <- paste("M", round(ms1mz, 0), "_R", round(ms1rt, 0), "_", i, sep = "")
-      
+
       # create sample name
       sampleName <- sps@backend@spectraData@listData[["dataStorage"]][i]
-      sampleName <- str_split(sampleName, "\\\\")
+      sampleName <- stringr::str_split(sampleName, "\\\\")
       sampleName <- sapply(sampleName, tail, 1)
-      sampleName <- str_sub(sampleName, end = -6)
-      
+      sampleName <- stringr::str_sub(sampleName, end = -6)
+
       # create .ms file object
       export_file <- data.frame()
       export_file <- rbind(export_file, c('>compound', featureID))
@@ -59,17 +58,17 @@ read_mzML <- function(filePath, create_ms = TRUE) {
       export_file <- rbind(export_file, c(ms1mz, ms1int))
       export_file <- rbind(export_file, "")
       export_file <- rbind(export_file, c(">ms2peaks", ""))
-      
+
       ms2spec <- setNames(ms2spec, names(export_file))
-      
+
       export_file <- rbind(export_file, ms2spec)
-      
+
       write_delim(export_file, file = paste("ms/", sampleName, "_", i, ".ms", sep = ""), delim = "\t", col_names = FALSE)
-      
+
     }
-    
+
   }
-  
+
   return(sps)
-  
+
 }
