@@ -2,7 +2,11 @@
 #' Convert mzml to ms files (Unifi Export)
 #'
 #' Use this function to convert processed mzml spectra files, exported from Unifi, to a spectra object (MSnbase), and generate .ms files for use in SIRIUS, MetFrag, and MassBank.
-#' @import c(`tidyverse`, `Spectra`, `MSnbase`, `BiocManager`)
+#' @import tidyverse
+#' @import Spectra
+#' @import MSnbase
+#' @import BiocManager
+#' 
 #' @param filePath The path to the folder containing the .mzml files exported from Unifi
 #' @param create_ms logical: choose to create .ms files (default = TRUE)
 #' @return Spectra object (MSnbase)

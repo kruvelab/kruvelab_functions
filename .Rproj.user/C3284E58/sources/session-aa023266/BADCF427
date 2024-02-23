@@ -1,0 +1,27 @@
+{
+    "id": "BADCF427",
+    "path": "~/GitHub/kruvelab_functions/R/clean_functions.R",
+    "project_path": "R/clean_functions.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1708685756006.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "7,9",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1698915053,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1698915053,
+    "read_only": false,
+    "read_only_alternatives": []
+}

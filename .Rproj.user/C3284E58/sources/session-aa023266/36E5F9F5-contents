@@ -1,0 +1,21 @@
+library(devtools)
+library(tools)
+
+# Path to your package
+pkg_path <- "C:/Users/HelenSepman/OneDrive - Kruvelab/Documents/GitHub/kruvelab_functions"
+
+# Build and install the package
+build(pkg_path, manual = TRUE)
+install(pkg_path)
+
+# Generate .Rd files
+document(pkg_path)
+
+# Path to the directory containing .Rd files
+doc_path <- file.path(pkg_path, "man")
+
+# Path to save the PDF
+pdf_path <- "/path/to/save/your/package_documentation.pdf"
+
+# Generate PDF
+utils::Rd2pdf(outdir = doc_path, file = pdf_path)

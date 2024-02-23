@@ -1,6 +1,5 @@
 Package: kruvelabFns
 Title: Kruvelab functions
-Author: Kruvelab
 Version: 1.0.0
 Description: Collection of all functions used daily in Kruvelab
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
