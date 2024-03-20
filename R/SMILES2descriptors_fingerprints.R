@@ -47,7 +47,8 @@ SMILES2SIRIUS_fp <- function(SMILES_list, write_raw_fp=T, mode='raw') {
   # Fingerprints that cover all SIRIUS fingerprints 
   # (files downloaded from: https://github.com/boecker-lab/sirius)
   OpenBabelFP3_names <- paste0('AbsIdx_', c(0:54))
-  suppressWarnings(OpenBabelFP3_SMARTS <- unlist(pattern_file_reader('OpenBabel_FP3_patterns.txt', '\t')[1], use.names=F))
+  #suppressWarnings(OpenBabelFP3_SMARTS <- unlist(pattern_file_reader('R/OpenBabel_FP3_patterns.txt', '\t')[1], use.names=F))
+  OpenBabelFP3_SMARTS = kruvelabFns::OpenBabelFP3_SMARTS
   
   CDKsubstructure_names <- paste0('AbsIdx_', c(55:361))
   MACCS_names <- paste0('AbsIdx_', c(362:527))
