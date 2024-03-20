@@ -1,5 +1,5 @@
 # KruvelabFns
-Functions that Kruvelab uses on regular bases
+Functions that Kruvelab uses on regular basis.
 
 
 To install the R-package run:
