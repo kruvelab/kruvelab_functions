@@ -1,26 +1,26 @@
 {
-    "id": "0A739272",
-    "path": "~/GitHub/kruvelab_functions/in_work/all_functions.R",
-    "project_path": "in_work/all_functions.R",
+    "id": "B48923D9",
+    "path": "~/GitHub/kruvelab_functions/R/SMILES2descriptors_fingerprints.R",
+    "project_path": "R/SMILES2descriptors_fingerprints.R",
     "type": "r_source",
     "hash": "0",
     "contents": "",
     "dirty": false,
-    "created": 1691679294063.0,
+    "created": 1710933833258.0,
     "source_on_save": false,
     "relative_order": 2,
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "1887,19",
-        "scrollLine": "1878"
+        "cursorPosition": "47,62",
+        "scrollLine": "34"
     },
     "folds": "",
-    "lastKnownWriteTime": 1691674929,
+    "lastKnownWriteTime": 1710934395,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1691674929,
+    "last_content_update": 1710934395753,
     "read_only": false,
     "read_only_alternatives": []
 }
