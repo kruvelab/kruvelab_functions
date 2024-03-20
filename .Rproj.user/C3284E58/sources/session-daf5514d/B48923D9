@@ -3,24 +3,24 @@
     "path": "~/GitHub/kruvelab_functions/R/SMILES2descriptors_fingerprints.R",
     "project_path": "R/SMILES2descriptors_fingerprints.R",
     "type": "r_source",
-    "hash": "941540986",
+    "hash": "0",
     "contents": "",
-    "dirty": false,
+    "dirty": true,
     "created": 1710933833258.0,
     "source_on_save": false,
     "relative_order": 2,
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "50,56",
-        "scrollLine": "41"
+        "cursorPosition": "58,14",
+        "scrollLine": "43"
     },
     "folds": "",
     "lastKnownWriteTime": 1710935388,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1710935388550,
+    "last_content_update": 1710935886139,
     "read_only": false,
     "read_only_alternatives": []
 }
