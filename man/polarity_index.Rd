@@ -21,3 +21,6 @@ This function calculates the polarity index based on organic modifier and organi
 polarity_index_suspect <- polarity_index(organic_percent = 80, 
                                          organic_modifier = "MeOH");
 }
+\author{
+Jaanus Liigand, Anneli Kruve
+}

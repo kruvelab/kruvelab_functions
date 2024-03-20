@@ -4,6 +4,8 @@
 #' which correspond to SIRIUS:CSI:FingerID outputted fingerprint features. 
 #' After that it generates binary SIRIUS fingerprints for all input SMILES notations.
 #'
+#' @author Ida Rahu
+#' 
 #' @import rcdk
 #' @import rJava
 #' @import dplyr

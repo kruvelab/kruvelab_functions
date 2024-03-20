@@ -26,3 +26,6 @@ This function reads structural patterns from files downloaded from https://githu
 which correspond to SIRIUS:CSI:FingerID outputted fingerprint features.
 After that it generates binary SIRIUS fingerprints for all input SMILES notations.
 }
+\author{
+Ida Rahu
+}

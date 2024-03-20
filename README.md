@@ -25,4 +25,5 @@ Here you can find workbooks developed for applying specific functions applied in
 * check if the same variables are used in other functions; if yes, then keep to the same writing of the variable.
 * specify variable types for inputs if possible.
 * note down which libraries does your function depend on.
+* use a [function_template]() to document your function.
 
