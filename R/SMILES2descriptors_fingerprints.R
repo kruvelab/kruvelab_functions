@@ -47,22 +47,21 @@ SMILES2SIRIUS_fp <- function(SMILES_list, write_raw_fp=T, mode='raw') {
   # Fingerprints that cover all SIRIUS fingerprints 
   # (files downloaded from: https://github.com/boecker-lab/sirius)
   OpenBabelFP3_names <- paste0('AbsIdx_', c(0:54))
-  #suppressWarnings(OpenBabelFP3_SMARTS <- unlist(pattern_file_reader('R/OpenBabel_FP3_patterns.txt', '\t')[1], use.names=F))
-  OpenBabelFP3_SMARTS = kruvelabFns::OpenBabelFP3_SMARTS
-  
+  suppressWarnings(OpenBabelFP3_SMARTS <- unlist(pattern_file_reader(system.file('fingerprint_files', 'OpenBabel_FP3_patterns.txt', package = 'kruvelabFns'), '\t')[1], use.names=F))
+
   CDKsubstructure_names <- paste0('AbsIdx_', c(55:361))
   MACCS_names <- paste0('AbsIdx_', c(362:527))
   PubChem_names <- paste0('AbsIdx_', c(528:1408))
   KlekotaRoth_names <- paste0('AbsIdx_', c(1409:6268))
   
   ECFP6_names <- paste0('AbsIdx_', c(6269:8178))
-  ECFP6_hashes <- unlist(read.table('ecfp_fp_hashes.txt', header=F), use.names=F)
+  ECFP6_hashes <- unlist(read.table(system.file('fingerprint_files', 'ecfp_fp_hashes.txt', package = 'kruvelabFns'), header=F), use.names=F)
   
   custommadeSMARTS_names <- paste0('AbsIdx_', c(8179:8461))
-  suppressWarnings(custommade_SMARTS <- unlist(pattern_file_reader('biosmarts_aka_custom_made_fps.txt', '\n'), use.names=F))
+  suppressWarnings(custommade_SMARTS <- unlist(pattern_file_reader(system.file('fingerprint_files', 'biosmarts_aka_custom_made_fps.txt', package = 'kruvelabFns'), '\n'), use.names=F))
   
   ringsystems_names <- paste0('AbsIdx_', c(8462:8924))
-  ringsystems_SMARTS <- unlist(pattern_file_reader('ringsystem_fps.txt', '\n'), use.names=F)
+  ringsystems_SMARTS <- unlist(pattern_file_reader(system.file('fingerprint_files', 'ringsystem_fps.txt', package = 'kruvelabFns'), '\n'), use.names=F)
   
   
   no_columns = 1 + length(OpenBabelFP3_names) + length(CDKsubstructure_names) +
@@ -156,11 +155,11 @@ SMILES2SIRIUS_fp <- function(SMILES_list, write_raw_fp=T, mode='raw') {
   
   # Generating the names for features so calculated fingerprint features would 
   # match with SIRIUS+CSI:FingerID absolute index.
-  positive_idxs <- pattern_file_reader('csi_fingerid.tsv', '\t')
+  positive_idxs <- pattern_file_reader(system.file('fingerprint_files', 'csi_fingerid.tsv', package = 'kruvelabFns'), '\t')
   colnames(positive_idxs) <- positive_idxs[1,]
   positive_idxs <- positive_idxs[-1, ] 
   
-  negative_idxs <- pattern_file_reader('csi_fingerid_neg.tsv', '\t')
+  negative_idxs <- pattern_file_reader(system.file('fingerprint_files', 'csi_fingerid_neg.tsv', package = 'kruvelabFns'), '\t')
   colnames(negative_idxs) <- negative_idxs[1,]
   negative_idxs <- negative_idxs[-1, ] 
   
