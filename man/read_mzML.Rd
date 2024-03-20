@@ -4,10 +4,10 @@
 \alias{read_mzML}
 \title{Convert mzml to ms files (Unifi Export)}
 \usage{
-read_mzML(filePath, create_ms = TRUE)
+read_mzML(path_to_folder, create_ms = TRUE)
 }
 \arguments{
-\item{filePath}{The path to the folder containing the .mzml files exported from Unifi}
+\item{path_to_folder}{The path to the folder containing the .mzml files exported from Unifi}
 
 \item{create_ms}{logical: choose to create .ms files (default = TRUE)}
 }

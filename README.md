@@ -21,7 +21,7 @@ Here you can find workbooks developed for applying specific functions applied in
 
 ## When you are developing a function...
 
-* use lowercase letters and underscores for function names and variables (except for names such as SIRIUS, etc.).
+* use lowercase letters and underscores for function names and variables (except for names such as SIRIUS, etc., or using one variable to calculate other(s) such as "SMILES2descriptors").
 * check if the same variables are used in other functions; if yes, then keep to the same writing of the variable.
 * specify variable types for inputs if possible.
 * note down which libraries does your function depend on.

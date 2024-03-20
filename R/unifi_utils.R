@@ -7,12 +7,12 @@
 #' @import MSnbase
 #' @import BiocManager
 #' 
-#' @param filePath The path to the folder containing the .mzml files exported from Unifi
+#' @param path_to_folder The path to the folder containing the .mzml files exported from Unifi
 #' @param create_ms logical: choose to create .ms files (default = TRUE)
 #' @return Spectra object (MSnbase)
 #' @export
-read_mzML <- function(filePath, create_ms = TRUE) {
-  files <- dir(filePath, pattern = ".mzml", full.names = TRUE)
+read_mzML <- function(path_to_folder, create_ms = TRUE) {
+  files <- dir(path_to_folder, pattern = ".mzml", full.names = TRUE)
 
   # Using MSBackend Spectra
   sps <- Spectra::Spectra(files, source = MsBackendMzR())
