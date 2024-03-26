@@ -16,4 +16,5 @@ Spectra object (MSnbase)
 }
 \description{
 Use this function to convert processed mzml spectra files, exported from Unifi, to a spectra object (MSnbase), and generate .ms files for use in SIRIUS, MetFrag, and MassBank.
+(removed MSnbase and BiocManager from imports; installation problems?)
 }

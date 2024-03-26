@@ -1,0 +1,563 @@
+library(tidyverse)
+library(caret)
+library(caTools)
+library(Metrics)
+library(plotly)
+library(cowplot)
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/toxicity")
+source("SIRIUS_FP_function.R")
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen")
+source("functions.R")
+library("FactoMineR")
+library("factoextra")
+
+# ---- theme ----
+extrafont::loadfonts(device = "win")
+
+font <- extrafont::choose_font("Quicksand")
+fontsize <- 14
+basecolor <- "#515251" 
+highlighter_color = "#7CB368" #"#728D68"
+datapoints_color1 <- "#959D95"
+datapoints_color2 <- "#728D68"
+datapoints_color3 <- "#7CB368"
+
+# Colors:
+# dark grey: #515251
+# highlight green: #728D68
+# silver light gray: #ACAFAC
+# slightly darker gray: #959D95
+# something between green and gray: #759584
+# purple?: #475B63
+
+#----theme----
+my_theme <-   theme(
+  #remove the background of the plot
+  plot.background = element_blank(),
+  #and from the panel as well
+  panel.background = element_blank(),
+  #define the width and color of the axis on the plot
+  axis.line = element_line(size = 1,
+                           color = basecolor),
+  #if you use plot title you can specify parameters here
+  #PS! use plot title only if you send or show the plot on its own 
+  #for plots on the slide/thesis use slide title and figure caption 
+  # plot.title = element_text(color = basecolor,
+  #                           size = 14,
+  #                           face = "bold"),
+  #specify the size and style of the text on the plot, e.g. axis title
+  text = element_text(family = font,
+                      size = fontsize,
+                      color = basecolor),
+  legend.key = element_blank(),
+  strip.background = element_blank(),
+  strip.text = element_blank(),
+  # strip.text = element_text(family = font,
+  #                           size = fontsize,
+  #                           color = basecolor),
+  #to remove or adjust the position of the legend
+  #"none" - is no legend; "top" "bottom", "right", "left";
+  #or by coordinates. 
+  #c(0, 0) corresponds to the "bottom left" 
+  #and c(1, 1) corresponds to the "top right" position.
+  legend.position = "none",
+  #legend.position = c(0.9, 0.25),
+  #if you have a legend title and text you can specify font size here
+  #here it indicates no legend title
+  legend.title = element_blank(), 
+  legend.text = element_text(family = font,
+                             size = fontsize,
+                             color = basecolor),
+  #specify axis marks text
+  axis.text = element_text(family = font,
+                           size = fontsize,
+                           color = basecolor),
+  #remove tick marks
+  axis.ticks = element_blank(),
+  #define the ratio of x and y axis
+  #PS! for scatter plots it needs to be 1!
+  #for predicted - measured plots also adjust the ranges!
+  aspect.ratio = 1,
+  #adjust the position of the axis title
+  axis.title.x = element_text(hjust = c(1), vjust = c(0)),
+  axis.title.y = element_text(hjust = c(1), vjust = c(1))
+)
+
+# ---- Read in data, create split for train and test set -----
+
+data <- read.csv("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/IE_modelling/data_unified_IEs_all_filtered_20221121.csv")
+
+inchi <- data %>%
+  select(inchi) %>%
+  unique()
+
+set.seed(123)
+split_inchi <- sample.split(inchi$inchi, SplitRatio = 0.8)
+
+inchi <- inchi %>%
+  mutate(split = split_inchi)
+
+data <- data %>%
+  left_join(inchi)
+
+# Distribution of data - normality test?
+ggplot(data = data) + 
+  geom_histogram(mapping = aes(x=as.numeric(unified_IEs)), bins = 45) +
+  facet_wrap(~split, scales="free_y") +
+  xlab(substitute(paste("log", italic("IE"))["unified"]))  +
+  my_theme
+
+# -----------------------------------------------------
+# Calculating (reading in) descriptors, cleaning them 
+# -----------------------------------------------------
+
+# ---- Cleaning SMILES ----
+data_SMILES <- data %>%
+  select(SMILES) %>%
+  unique()
+
+#Some weird SMILES that give error in calculation?
+# faulty_SMILES <- tibble(SMILES = data_SMILES[1542:1543,])
+# 1542 - Cystine-DEEMM, 1543 - 3-Methyl-histidine-DEEMM
+
+# Delete these SMILES from the SMILES list
+data_SMILES <- data_SMILES %>% #[-c(1542, 1543),]
+  filter(SMILES != "CCOC(=O)C(=CNC(CSSCC(NC=C(C(=O)OCC)C(=O)OCC)C(=O)O)C(=O)O)C(=O)OCC",
+         SMILES != "CCOC(=O)C(=CNC(CC1=CNC=[N]1C)C(=O)O)C(=O)OCC")
+
+# data_smiles_inchis <- data %>%
+#   select(SMILES, inchi) %>%
+#   unique() %>%
+#   group_by(inchi) %>%
+#   summarise(count = n()) %>%
+#   ungroup()
+  
+# ----  PaDEL descriptors ---- 
+
+descr_padel <- PaDEL_original(data_SMILES)
+descr_padel <- read_csv("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/PaDEL_unifiedIEs.csv") 
+
+descr_padel <- data_SMILES %>%
+  inner_join(descr_padel) 
+#write_delim(descr_padel, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/PaDEL_unifiedIEs.csv", delim = ";")
+
+
+# ----  Mordred descriptors ----
+
+descr_mordred <- Mordred_descriptors(data_SMILES)
+#write_delim(descr_mordred, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/Mordred_unifiedIEs.csv", delim = ";")
+descr_mordred <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/Mordred_unifiedIEs.csv", delim=";") 
+descr_mordred <- data_SMILES %>%
+  inner_join(descr_mordred) 
+
+
+# ----  Morgan-2 descriptors ----
+
+descr_morgan <- Morgan2_descriptors(data_SMILES)
+#write_delim(descr_morgan, "Morgan2_unifiedIEs.csv", delim = ";")
+descr_morgan <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/Morgan2_unifiedIEs.csv", delim=";") 
+descr_morgan <- data_SMILES %>%
+  inner_join(descr_morgan)
+# write_delim(descr_morgan, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/Morgan2_unifiedIEs.csv", delim = ";")
+
+
+
+# ----  MAP4 ----
+#sarnasus - elemendid pole v?rreldavad?
+
+descr_map4 <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/IE_modelling/MAP4fingerprints.csv", delim = ",", col_names = FALSE)
+smiles_map4 <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/IE_modelling/MAP4fingerprints_smiles.csv", delim = ",", col_names = FALSE)
+
+colnames(smiles_map4) <- c("SMILES")
+
+descr_map4 <- smiles_map4 %>%
+  bind_cols(descr_map4)
+
+descr_map4 <- data_SMILES %>% 
+  left_join(descr_map4)
+
+# descr_map4 <- data_SMILES %>%
+#   inner_join(descr_map4)
+# write_delim(descr_map4, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/MAP4_unifiedIEs.csv", delim = ";")
+
+descr_map4 <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/MAP4_unifiedIEs.csv", delim = ";")
+descr_map4 <- data_SMILES %>%
+  inner_join(descr_map4)
+
+
+# ---- rcdk ----
+
+descr_rcdk <- rcdk_fingerprints(data_SMILES)
+#write_delim(descr_rcdk, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/rcdk_FP_unifiedIEs.csv", delim = ";")
+descr_rcdk <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/rcdk_unifiedIEs.csv", delim=";") 
+# descr_rcdk <- data_SMILES %>%
+#   inner_join(descr_rcdk)
+# write_delim(descr_rcdk, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/rcdk_unifiedIEs.csv", delim = ";")
+
+
+
+# ---- SIRIUS structural fingerprints ----
+
+folder_FP_info <- "C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/toxicity"
+
+SIRIUS_descriptors <- Fingerprint_calc(data_SMILES, folder_FP_info)
+#write_delim(SIRIUS_descriptors, "SIRIUS_FP_unifiedIEs.csv", delim = ";")
+SIRIUS_descriptors <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/old/SIRIUS_FP_unifiedIEs.csv")
+
+# NB! filter out the FPs that SIRIUS actually does not calculate!!
+sirius_true_FP_pos <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/toxicity/csi_fingerid.tsv",
+                                 delim = "\t")
+sirius_true_FP_neg <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/toxicity/csi_fingerid_neg.tsv",
+                                 delim = "\t")
+
+
+col_names_calcSirius_pos <- as.vector(paste("Un", sirius_true_FP_pos$absoluteIndex, sep = ""))
+col_names_calcSirius_neg <- as.vector(paste("Un", sirius_true_FP_neg$absoluteIndex, sep = ""))
+col_names_calcSmiles <- colnames(SIRIUS_descriptors)
+intersection <- intersect(col_names_calcSirius_pos, col_names_calcSirius_neg)
+intersection <- intersect(intersection, col_names_calcSmiles)
+intersection <- append("SMILES", intersection)
+
+SIRIUS_descriptors <- SIRIUS_descriptors[names(SIRIUS_descriptors)[names(SIRIUS_descriptors) %in% intersection] ]
+
+# ## SIRIUS 5.6.2 - are all FP that end up in the model calculated with SIRIUS 5.6.2? YES
+# sirius_pos_562 <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/NORMAN/NORMAN_MSDIAL/MS_flies/211028_cal1_2/results_SIRIUS_5_6_2/csi_fingerid.tsv",
+#                              delim = "\t")
+# sirius_neg_562 <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/NORMAN/NORMAN_MSDIAL/MS_flies/211028_cal1_2/results_SIRIUS_5_6_2/csi_fingerid_neg.tsv",
+#                              delim = "\t")
+# col_names_calcSirius_pos_562 <- as.vector(paste("Un", sirius_pos_562$absoluteIndex, sep = ""))
+# col_names_calcSirius_neg_562 <- as.vector(paste("Un", sirius_neg_562$absoluteIndex, sep = ""))
+# col_names_calcSmiles_562 <- colnames(SIRIUS_descriptors)
+# intersection_562 <- intersect(col_names_calcSirius_pos_562, col_names_calcSirius_neg_562)
+# intersection_562 <- intersect(intersection_562, col_names_calcSmiles_562)
+
+# SIRIUS_descriptors <- data_SMILES %>%
+#   inner_join(SIRIUS_descriptors)
+# write_delim(SIRIUS_descriptors, "C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/SIRIUS_FP_unifiedIEs.csv", delim = ";")
+
+SIRIUS_descriptors <- read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/calculated_fingerprints/SIRIUS_FP_unifiedIEs.csv", delim = ";")
+
+SIRIUS_descriptors <- data_SMILES %>% 
+  left_join(SIRIUS_descriptors)
+
+# ---- all fingerprints together ----
+descr_all <- descr_padel %>%
+  left_join(descr_mordred, by="SMILES") %>%
+  left_join(descr_morgan, by="SMILES") %>%
+  left_join(descr_rcdk, by="SMILES") %>%
+  left_join(descr_map4, by="SMILES") %>%
+  left_join(SIRIUS_descriptors, by="SMILES")
+
+# ---- Cleaning descriptors ----
+descr <- SIRIUS_descriptors
+
+descr <- cleaning_descriptors(descr)
+
+# -----------------------------------------------------
+# Split data to training and test set, building models
+# -----------------------------------------------------
+
+data_clean <- data %>%
+  select(unified_IEs, inchi, split, SMILES, viscosity, surface_tension, polarity_index, pH_aq, name, Lab) %>% #### NH4!!!!!!
+  left_join(descr) %>%
+  unique() %>%
+  na.exclude()
+
+training_set = data_clean %>%
+  filter(split) %>%
+  select(-split)
+#training_set = transform(training_set, unified_IEs = sample(unified_IEs))
+
+
+test_set = data_clean %>%
+  filter(!split) %>%
+  select(-split)
+
+# ---- Cross-validation/hyperparameter tuning ----
+set.seed(123)
+folds = 5
+fitControlMethod = "boot"
+method = "xgbTree"             
+folds = groupKFold(training_set$inchi, k = folds) 
+fitControl <- trainControl(method = fitControlMethod, index = folds)
+
+# tested models
+# 1) "xgbTree" - very good
+# 2) "glmboost" not really
+#MLR
+#SVM with different kernels
+#Random Forest
+#knn
+# xgbTree
+# xgbLinear
+# xgbDART
+# RRF
+
+
+
+
+# ---- Building model ----
+set.seed(123)
+model <- train(unified_IEs ~ ., 
+               data = training_set %>% select(-inchi, -SMILES, -name, -Lab),
+               method = method,
+               trControl = fitControl)
+
+
+# --------
+
+
+# Predict values for training set, rmse of training set
+training_set = training_set %>%
+  mutate(unified_IEs_pred = predict(model, newdata = training_set))
+
+rmse_training <- rmse(training_set$unified_IEs, training_set$unified_IEs_pred)
+
+# Predict values for test set, rmse of test set
+test_set <- test_set %>%
+  mutate(unified_IEs_pred = predict(model, newdata = test_set))
+
+rmse_test <- rmse(test_set$unified_IEs, test_set$unified_IEs_pred)
+
+
+# Plot predicted vs experimental values for training and test set
+
+data_forPlotting <- training_set %>%
+  mutate(set = "training") %>%
+  bind_rows(test_set %>%
+              mutate(set = "test")) %>%
+  mutate(set = factor(set,
+                      ordered = TRUE,
+                      levels = c( "training", "test")))
+
+
+plot = ggplot(data = data_forPlotting) + # %>%
+                # group_by(name, Lab) %>%
+                # summarize(unified_IEs = mean(unified_IEs),
+                #           unified_IEs_pred = mean(unified_IEs_pred))%>%
+                # ungroup()) +
+  geom_point(
+             mapping = aes(x = unified_IEs,
+                           y = unified_IEs_pred,
+                           #group = Lab, 
+                           color = set,
+                           text = name),
+             size = 2.5,
+             alpha = 0.5) +
+
+  scale_color_manual(values=c("#515251", "#7CB368"))+
+  # geom_point(data = data_forPlotting %>%
+  #              filter(set == "test"),
+  #            mapping = aes(x = unified_IEs,
+  #                          y = unified_IEs_pred,
+  #                          #group = Lab, 
+  #                          #color = Lab,
+  #                          color = "#7CB368",
+  #                          text = name)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 1, slope = 1) +
+  geom_abline(intercept = -1, slope = 1) +
+  theme(aspect.ratio = 1) + 
+  xlim(c(-2.5, 6.5)) +
+  ylim(c(-2.5, 6.5)) +
+  #annotation_logticks() +
+  #theme_plot +
+  xlab(substitute(paste("log", italic("IE"))["unified"]))  +
+  ylab(substitute(paste("log", italic("IE"))["predicted"])) +
+  my_theme #+
+  #facet_wrap(~ set, scales = "fixed")
+  
+plot
+
+data_all <- list("model" = model,
+                 "plot" = plot,
+                 "data" = data_clean,
+                 "data_forPlotting" = data_forPlotting,
+                 "rmse_training" = rmse_training,
+                 "rmse_test" = rmse_test,
+                 "date" = Sys.Date())
+# 
+# data_all <- list("model" = model2,
+#                  "data" = data_clean,
+#                  "rmse_training" = rmse_training,
+#                  "date" = Sys.Date())
+
+# ---- Save data out as list ----
+# setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/Figures")
+# ggsave(plot, filename = "train_test_sirius_xgbTree_yscrambled.svg", width=6, height=5, units = "cm")
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/models")
+saveRDS(data_all, file="model_sirius_xgbTree_yscrambled.RData")
+
+# Q2 for the training set
+mean(model$resample$Rsquared)
+
+
+# R2 to test set
+r = cor(data_forPlotting$unified_IEs, data_forPlotting$unified_IEs_pred)
+r_squared = r^2
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/models")
+data_list_padel <- readRDS("model_PaDEL_xgbTree.RData")
+data_list_sirius <- readRDS("model_SIRIUS_xgbTree.RData")
+data_list_mordred <- readRDS("model_Mordred_xgbTree.RData")
+data_list_morgan2 <- readRDS("model_morgan2_xgbTree.RData")
+data_list_map4 <- readRDS("model_map4_xgbLinear.RData")
+
+data_list_scrambled <- readRDS("model_sirius_xgbTree_yscrambled.RData")
+
+# ggplotly(data_list_sirius$plot)
+# ggplotly(data_list_padel$plot)
+
+
+list_models <- data_list_scrambled
+
+model <- list_models$model
+data_clean <- list_models$data
+data_forPlotting <- list_models$data_forPlotting
+
+list_models$rmse_training
+list_models$rmse_test
+
+# ---- prediction error calculation ----
+
+# Q2 for the training set
+mean(model$resample$Rsquared)
+
+# mean, median, geom. mean
+test_set_pred_error <- data_forPlotting %>%
+  filter(set == "test") %>% 
+  mutate(pred_error = case_when(unified_IEs > unified_IEs_pred ~ (10^unified_IEs)/(10^unified_IEs_pred),
+                                TRUE ~ (10^unified_IEs_pred)/(10^unified_IEs))) %>%
+  select(pred_error, unified_IEs, unified_IEs_pred, everything())
+
+# mean pred error
+mean(test_set_pred_error$pred_error)
+
+# geometric mean
+exp(mean(log(test_set_pred_error$pred_error)))
+
+# median pred error
+median(test_set_pred_error$pred_error)
+
+summary(lm(unified_IEs_pred ~ unified_IEs, data = test_set_pred_error))
+# statistically significatn - define alpha, in M&M
+
+# ---- training for best fit -----
+training_set = data_clean %>%
+  select(-split)
+
+grid_optimized <- expand.grid(
+  nrounds = model$bestTune$nrounds,
+  max_depth = model$bestTune$max_depth,
+  eta = model$bestTune$eta,
+  gamma = model$bestTune$gamma,
+  colsample_bytree = model$bestTune$colsample_bytree,
+  min_child_weight = model$bestTune$min_child_weight,
+  subsample = model$bestTune$subsample
+)
+
+train_control <- caret::trainControl(
+  method = "none"
+)
+
+set.seed(123)
+model2 <- train(unified_IEs ~ .,
+                method = method,
+                data = training_set %>% select(-inchi, -SMILES, -name, -Lab),
+                trControl = train_control,
+                tuneGrid = grid_optimized)
+
+# Predict values for training set, rmse of training set
+training_set = training_set %>%
+  mutate(unified_IEs_pred = predict(model2, newdata = training_set))
+
+rmse_training <- rmse(training_set$unified_IEs, training_set$unified_IEs_pred)
+
+
+data_all <- list("model" = model2,
+                 "data" = data_clean,
+                 "rmse_training" = rmse_training,
+                 "date" = Sys.Date())
+
+# ---- Save data out as list ----
+# setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/models")
+# saveRDS(data_all, file="model_PaDEL_xgbTree_allData.RData")
+
+
+
+#---- with xgboost directly ----
+
+# training_set1 <- as.matrix(training_set %>% 
+#                              select(-inchi, -SMILES, -name, -Lab, -unified_IEs))
+# output_label <- training_set$unified_IEs
+# 
+# dtrain <- xgboost::xgb.DMatrix(data = training_set1, 
+#                                label = output_label)
+# 
+# set.seed(123)
+# model2 <- xgboost::xgb.train(data = dtrain, 
+#                              #label = training_set$unified_IEs,
+#                              nrounds = 50,
+#                              max.depth = 3, 
+#                              eta = 0.3, 
+#                              gamma = 0,
+#                              colsample_bytree = 0.6, 
+#                              min_child_weight = 1,
+#                              subsample = 1,
+#                              nthread = 3)
+# 
+# training_set2 <- as.data.frame(training_set)  %>% 
+#   mutate(unified_IEs_pred = predict(model2, training_set1))
+# 
+# rmse_training <- rmse(training_set2$unified_IEs, training_set2$unified_IEs_pred)
+# 
+# # Predict values for test set, rmse of test set
+# test_set1 <- as.matrix(test_set  %>% 
+#                          select(-inchi, -SMILES, -name, -Lab, -unified_IEs))
+# 
+# test_set2 <- test_set %>%
+#   mutate(unified_IEs_pred = predict(model2, test_set1))
+# 
+# rmse_test <- rmse(test_set2$unified_IEs, test_set2$unified_IEs_pred)
+# 
+
+
+
+
+
+
+
+#---- calculate more (open source) fingerprints----
+#rcdk
+#pKa and logP chemaxonis paremad,logP rcdk-s ka olemas
+# https://cran.r-project.org/web/packages/rcdk/vignettes/using-rcdk.html#molecular-descriptors
+#PaDEL
+#Mordred
+#ECFP
+#Morgan-2
+#Morgan-3
+#Map4
+#SIRIUS fingerprints 
+# CSI:FingerID does not predict a single fingerprint type but instead, five of them: Namely,
+#CDK Substructure fingerprints, PubChem CACTVS fingerprints, Klekota-Roth fingerprints [20], FP3 fingerprints, and
+#MACCS fingerprints. In addition, CSI:FingerID predicts ECFP2 and ECFP4 fingerprints
+
+#ChemoPy? Pyhton2
+#rcpi - R package but can calculate only 307 small descriptors
+
+
+#---- fit models -----
+#for each of the parameters set fit all of the below models
+
+#MLR
+#SVM with different kernels
+#Random Forest
+#knn
+#xgbTrees
+#xgbLinear
+#xgbDART
+#####
+
+
+

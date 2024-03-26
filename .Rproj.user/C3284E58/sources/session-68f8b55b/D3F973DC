@@ -1,0 +1,26 @@
+{
+    "id": "D3F973DC",
+    "path": "~/GitHub/kruvelab_functions/R/unifi_utils.R",
+    "project_path": "R/unifi_utils.R",
+    "type": "r_source",
+    "hash": "1158645002",
+    "contents": "",
+    "dirty": false,
+    "created": 1711458876040.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "6,18",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1711458941,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1711458941235,
+    "read_only": false,
+    "read_only_alternatives": []
+}

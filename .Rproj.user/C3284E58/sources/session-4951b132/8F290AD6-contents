@@ -1,0 +1,229 @@
+library(tidyverse)
+#install.packages('reticulate')
+library(reticulate)
+library(rcdk)
+library(tidyverse)
+#use_python("/usr/local/bin/python")
+use_python("C:/Users/HelenSepman/AppData/Local/r-miniconda/envs/r-reticulate/python.exe")
+#use_python("C:/Users/karpa/AppData/Local/Microsoft/WindowsApps/python.exe")
+
+
+# reticulate::py_install("mordred")
+# reticulate::py_install("rdkit")
+# reticulate::py_install("pandas", pip = TRUE)
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen")
+
+#pKa and logP
+
+#---- PaDEL ----
+PaDEL_original = function(standards) {
+  SMILES_list = standards %>% 
+    select(SMILES) %>% 
+    unique() %>%
+    na.omit() %>%
+    mutate(Name = row_number())
+  standards = standards %>%
+    left_join(SMILES_list) 
+  
+  write_delim(SMILES_list %>% select(SMILES) %>% unique(),
+              "SMILES.smi",
+              col_names = FALSE)
+  
+  command = "java -jar PaDEL-Descriptor/PaDEL-Descriptor.jar -dir" #file name where they will be calculated
+  command_final = paste(command, "SMILES.smi", "-file", "descs_calc.csv", "-2d", sep =" ") #makes text for command prompt
+  javaOutput = system(command_final, intern = TRUE) #goes into commant prompt
+  #PaDEL saves the descriptors to the local folder
+  descs = read_delim("descs_calc.csv",
+                     delim = ",",
+                     col_names = TRUE)
+  
+  descs = descs %>%
+    mutate_all(~replace(., str_detect(., "Infinity"), as.numeric(0))) %>%
+    group_by(Name) %>%
+    mutate(Name = str_split(Name, pattern = "_")[[1]][length(str_split(Name, pattern = "_")[[1]])]) %>%
+    ungroup() %>%
+    mutate(Name = as.integer(Name)) 
+    
+  cols <- names(descs)
+  descs[cols] <- lapply(descs[cols], as.numeric)
+  
+  
+  descs = descs %>%
+    left_join(standards) %>%
+    select(colnames(standards), everything()) %>%
+    select(-Name)
+  
+  # write_delim(descs,
+  #             "data/descs_calc.csv",
+  #             delim = ",")
+  
+  return(descs)
+}
+
+
+#---- Mordred ----
+
+source_python("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/Mordred_python.py")
+np = import("numpy", convert = FALSE)
+pandas = import("pandas", convert = FALSE)
+rdkit = import("rdkit", conver = FALSE)
+mordred = import("mordred", convert = FALSE)
+
+Mordred_calculation_R = function(SMILES) {
+  descriptors = py_to_r(Mordred_calculation(SMILES))
+  return(descriptors)
+}
+
+unlisting <- function(listed) {
+  if (is.numeric(listed[[1]])){
+    new <- listed[[1]]
+  } else{
+    new <- NA
+  }
+  return(new)
+}
+
+Mordred_descriptors = function(SMILES_list) {
+  descriptors = tibble()
+  for (SMILES in SMILES_list$SMILES) {
+    descriptor = Mordred_calculation_R(SMILES)
+    descriptor_this = tibble(value = descriptor$`_values`)
+    if (dim(descriptors)[1] == 0) {
+      descriptors = descriptor_this
+    } else {
+      descriptors = descriptors %>%
+        bind_cols(descriptor_this)
+    }
+  }
+  names_Mordred = read_delim("Mordred_names.txt",
+                             delim = ",",
+                             col_names = FALSE) %>%
+    rename(desc_name = X1)
+  descriptors = descriptors %>%
+    bind_cols(names_Mordred) 
+  descriptors = descriptors%>%
+    gather(key = "compound", value = "value", -dim(descriptors)[2]) %>%
+    spread(desc_name, value) %>%
+    bind_cols(tibble("SMILES" = SMILES_list$SMILES)) %>%
+    select(-compound) %>%
+    select(SMILES, everything())
+  
+  descriptors = descriptors%>%
+    group_by(SMILES) %>%
+    mutate_if(is.list, funs(unlisting(.)))%>%
+    ungroup()
+  return(descriptors)
+}
+
+#SMILES_list = tibble("SMILES" = c('c1ccccc1N', 'c1ccccc1Cl', 'c1ccccc1Cl'))
+#descriptors = Mordred_descriptors(SMILES_list)
+
+
+#---- Morgan-2 ----
+source_python("C:/Users/HelenSepman/OneDrive - Kruvelab/computational/IE mudeli script ja failid/students/Helen/Morgan2_python.py")
+
+Morgan2_calculation_R = function(SMILES) {#, radius = 2, nBits = 1024) {
+  descriptors = Morgan2_calculation(SMILES)#, radius, nBits))
+  return(descriptors)
+}
+
+Morgan2_descriptors = function(SMILES_list) {
+  descriptors = tibble()
+  for (SMILES in SMILES_list$SMILES) {
+    descriptor = Morgan2_calculation_R(SMILES)
+    descriptor_this = tibble(descriptor)
+    if (dim(descriptors)[1] == 0) {
+      descriptors = descriptor_this
+    } else {
+      descriptors = descriptors %>%
+        bind_cols(descriptor_this)
+    }
+  }
+  names_Morgan2 = tibble(desc_name = 1:1024) %>%
+    mutate(desc_name = str_c("Morgan2_", desc_name))
+  descriptors = descriptors %>%
+    bind_cols(names_Morgan2) 
+  descriptors = descriptors%>%
+    gather(key = "compound", value = "value", -dim(descriptors)[2]) %>%
+    spread(desc_name, value) %>%
+    bind_cols(tibble("SMILES" = SMILES_list$SMILES)) %>%
+    select(-compound) %>%
+    select(SMILES, everything())
+  return(descriptors)
+}
+
+# descr = Morgan2_calculation_R('N#CC(OC1OC(COC2OC(CO)C(O)C(O)C2O)C(O)C(O)C1O)c1ccccc1')
+# Mordred_calculation_R('c1ccccc1N')
+# 
+# 
+# SMILES_list = tibble("SMILES" = c('c1ccccc1N', 'c1ccccc1Cl', 'c1ccccc1Cl'))
+# descriptors = Morgan2_descriptors(SMILES_list)
+
+#---- Morgan-3 ----
+#---- Map4 ----
+
+
+
+#---- SIRIUS fingerprints ----
+
+
+# ---- RCDK fingerprints ----
+
+# Cannot calculate first 18 descriptors as SMILES do not have 3D info
+rcdk_fingerprints <- function(SMILES_list) {
+  dn <- get.desc.names(type = "all")
+  mols <- parse.smiles(SMILES_list$SMILES)
+  allDescs <- eval.desc(mols, dn)
+  allDescs <- allDescs %>%
+    rownames_to_column(var = "SMILES")
+  return(allDescs)
+}
+
+
+
+# mols <- parse.smiles(SMILES_list$SMILES)
+# fps <- lapply(mols, get.fingerprint, type='kr')
+# 
+# fps[["CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]]@bits
+
+
+#---- pretraining data cleaning ----
+cleaning_descriptors = function(descs,
+                         nearZeroVar_freqCut = 80/20,
+                         highlyCorrelated_cutoff = 0.75) {
+ 
+   # Removing columns with missing values
+  descs = descs %>%
+    select_if(~ sum(is.na(.))< 10,) %>%
+    drop_na()
+  
+   # new_descs <- descs
+   # new_descs[, sapply(new_descs, class) != "environment"]
+  
+  smiles = descs %>%
+    select(SMILES)
+  
+  descs = descs %>%
+    dplyr::select(-SMILES)
+  
+  # Checking that any of the categorical values would not have more than 80% of existing/non-existing values
+  descs = descs %>%  
+    select(-c(nearZeroVar(descs, 
+                          freqCut = nearZeroVar_freqCut)))
+  
+  # Removing columns that are correlated to each other
+  correlationMatrix <- cor(descs, use = "complete.obs")
+  highlyCorrelated <- findCorrelation(correlationMatrix, 
+                                      cutoff = highlyCorrelated_cutoff)
+  
+  descs <- descs %>%
+    dplyr::select(-highlyCorrelated) %>%
+    bind_cols(smiles)
+  
+  return(descs)
+}
+
+
+
+

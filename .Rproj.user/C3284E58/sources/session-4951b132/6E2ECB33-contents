@@ -1,0 +1,827 @@
+library(tidyverse)
+library(MS2Quant)
+library(MS2Tox)
+library(readxl)
+library(OrgMassSpecR)
+library(patchwork)
+library(rcdk)
+library(caret)
+library(janitor)
+library(readxl)
+#library(ggridges)
+library(svglite)
+
+extrafont::loadfonts(device = "win")
+
+
+# Top5 #1A1E39
+# SWS #434973
+# PCL1000 #7A84C4
+# DIA #AAB4F1
+
+font <- extrafont::choose_font("Urbanist")
+fontsize <- 10
+basecolor <- "#515251" 
+
+          
+        # Colors:
+        # dark grey: #515251
+        # highlight green: #728D68
+        # silver light gray: #ACAFAC
+        # slightly darker gray: #959D95
+        # something between green and gray: #759584
+        # purple?: #475B63
+        
+        
+        my_theme <-   theme(
+          #remove the background of the plot
+          plot.background = element_blank(),
+          #and from the panel as well
+          panel.background = element_blank(),
+          #define the width and color of the axis on the plot
+          axis.line = element_line(size = 1,
+                                   color = basecolor),
+          #if you use plot title you can specify parameters here
+          #PS! use plot title only if you send or show the plot on its own 
+          #for plots on the slide/thesis use slide title and figure caption 
+          # plot.title = element_text(color = basecolor,
+          #                           size = 14,
+          #                           face = "bold"),
+          #specify the size and style of the text on the plot, e.g. axis title
+          text = element_text(family = font,
+                              size = fontsize,
+                              color = basecolor),
+          
+          legend.key = element_blank(),
+          strip.background = element_blank(),
+          #strip.text = element_blank(),
+          #to remove or adjust the position of the legend
+          #"none" - is no legend; "top" "bottom", "right", "left";
+          #or by coordinates. 
+          #c(0, 0) corresponds to the "bottom left" 
+          #and c(1, 1) corresponds to the "top right" position.
+          #legend.position = "none",
+          #legend.position = c(1.5, 0.85),
+          #if you have a legend title and text you can specify font size here
+          #here it indicates no legend title
+          legend.title = element_blank(), 
+          legend.text = element_text(family = font,
+                                     size = fontsize,
+                                     color = basecolor),
+          #specify axis marks text
+          axis.text = element_text(family = font,
+                                   size = fontsize,
+                                   color = basecolor),
+          #remove tick marks
+          axis.ticks = element_blank(),
+          #define the ratio of x and y axis
+          #PS! for scatter plots it needs to be 1!
+          #for predicted - measured plots also adjust the ranges!
+          #aspect.ratio = 1,
+          #adjust the position of the axis title
+          axis.title.x = element_text(hjust = c(1), vjust = c(0)),
+          axis.title.y = element_text(hjust = c(1), vjust = c(1)),
+          #axis.title = element_blank()
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()
+        )
+
+
+#setwd("F:/Helen/WWTP_data_analysis/")
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/1_standards")
+
+summarized_SIRIUS_identification_results <- function(folder) {
+  setwd(folder)
+  subfolder <- dir(folder, all.files = TRUE, recursive = TRUE, pattern = "*.tsv")
+  compiled_data <- tibble()
+  
+  for (filename in subfolder) {
+    
+    if (grepl("/structure_candidates", filename, fixed=TRUE)){
+      
+      comp_name <- str_split(filename, "/")
+      folder_name = comp_name[[1]][1]
+      
+      folder_number <- as.numeric(str_split(folder_name, "_")[[1]][1])
+      id <- as.character(tail(str_split(folder_name, "_")[[1]], n=1)) # id is taken as the last element of the folder name after splitting the string by underscores
+      
+      data_smile <- read_delim(filename, delim = "\t")
+      
+      if (dim(data_smile)[1] > 0) {
+        data_smile_notempty <- data_smile %>%
+          select(structureRankPerFormula, formulaRank, molecularFormula, `CSI:FingerIDScore`, adduct, InChI, smiles) %>%
+          mutate(id = id,
+                 folder_number = folder_number) %>%
+          rename(siriusscore = `CSI:FingerIDScore`,
+                 SMILES = smiles) %>%
+          select(id, folder_number, everything())
+        
+        compiled_data <- compiled_data %>%
+          bind_rows(data_smile_notempty) %>%
+          unique()
+      }
+    }
+  }
+  compiled_data <- compiled_data %>%
+    mutate(siriusscore = as.numeric(siriusscore)) %>%
+    group_by(id, folder_number) %>%
+    arrange(desc(siriusscore)) %>%
+    mutate(rank = row_number()) %>%
+    ungroup()
+  
+  return(compiled_data)
+}
+
+summarized_SIRIUS_formula_assignment <- function(folder) {
+  setwd(folder)
+  subfolder <- dir(folder, all.files = TRUE, recursive = TRUE, pattern = "*.tsv")
+  compiled_data <- tibble()
+  
+  for (filename in subfolder) {
+    
+    if (grepl("/formula_candidates", filename, fixed=TRUE)){
+      
+      comp_name <- str_split(filename, "/")
+      folder_name = comp_name[[1]][1]
+      
+      folder_number <- as.numeric(str_split(folder_name, "_")[[1]][1])
+      id <- as.character(tail(str_split(folder_name, "_")[[1]], n=1)) # id is taken as the last element of the folder name after splitting the string by underscores
+      
+      data_smile <- read_delim(filename, delim = "\t")
+      
+      if (dim(data_smile)[1] > 0) {
+        data_smile_notempty <- data_smile %>%
+          select(formulaRank, molecularFormula, adduct, precursorFormula) %>% 
+          mutate(id = id,
+                 folder_number = folder_number)
+        
+        compiled_data <- compiled_data %>%
+          bind_rows(data_smile_notempty) %>%
+          unique()
+      }
+    }
+  }
+  return(compiled_data)
+}
+
+
+FpTableForPredictions <- function(folderwithSIRIUSfiles){
+  
+  #uncompressing the compressed files - in case there has been any updates in SIRIUS project, good if it is done again so that compressed files are up to date
+  all_files_in_SIRIUS_folder <- list.files(path = folderwithSIRIUSfiles, full.names = TRUE, recursive = TRUE)
+  exts <- file_ext(all_files_in_SIRIUS_folder)
+  all_dirs <- tibble(dirs = all_files_in_SIRIUS_folder,
+                     exts = exts)
+
+  all_dirs <- all_dirs %>%
+    filter(exts == "")
+  if (length(all_dirs$dirs) > 0) {for (zipF in all_dirs$dirs){
+    outDir <- paste(zipF, "_uncompressed",
+                    sep = "")
+    unzip(zipF, exdir = outDir)
+  }}
+  
+  # FP calc
+  subfolder <- dir(folderwithSIRIUSfiles, all.files = TRUE, recursive = TRUE, pattern = ".fpt")
+  subfolder_score <- dir(folderwithSIRIUSfiles, all.files = TRUE, recursive = TRUE, pattern = ".info")
+  
+  # find common fingerprints of pos and neg mode
+  fp_names_pos <- paste("Un", read_delim(paste(folderwithSIRIUSfiles,"/csi_fingerid.tsv", sep = ""), delim = "\t", show_col_types = FALSE)$absoluteIndex, sep = "")
+  fp_names_neg <- paste("Un", read_delim(paste(folderwithSIRIUSfiles,"/csi_fingerid_neg.tsv", sep = "" ), delim = "\t", show_col_types = FALSE)$absoluteIndex, sep = "")
+  fp_names_common = intersect(fp_names_pos, fp_names_neg)
+  
+  
+  selected_rank1_table <- FingerPrintTable(subfolder, fp_names_pos, fp_names_neg, fp_names_common, folderwithSIRIUSfiles) %>%
+    inner_join(SiriusScoreRank1(subfolder_score, folderwithSIRIUSfiles), by = c("id", "foldernumber", "predion"))
+  
+  final_table_mass <- selected_rank1_table %>%
+    mutate(exactMass = "mass")
+  
+  for(n in 1:length(final_table_mass$predform)){
+    formula <- get.formula(final_table_mass$predform[n])
+    final_table_mass$exactMass[n] <- formula@mass
+  }
+  
+  final_table_mass <- final_table_mass %>%
+    mutate(exactMass = as.numeric(exactMass)) %>%
+    select(id, foldernumber, predform, predion, exactMass, everything())
+  
+  return(final_table_mass)
+}
+
+FingerPrintTable <- function(subfolder, fp_names_pos, fp_names_neg, fp_names_common, folderwithSIRIUSfiles){
+  
+  subfolder_pos <- c()
+  subfolder_neg <- c()
+  for(subfold in subfolder){
+    if (( grepl("]+", subfold, fixed=TRUE)) & grepl("/fingerprint", subfold, fixed=TRUE)){
+      subfolder_pos <- subfolder_pos %>%
+        list.append(subfold)
+    }
+    
+    if (( grepl("]-", subfold, fixed=TRUE)) & grepl("/fingerprint", subfold, fixed=TRUE)){
+      subfolder_neg <- subfolder_neg %>%
+        list.append(subfold)
+    }
+  }
+  # read in predicted FPs for pos and neg mode
+  if(!is.null(subfolder_pos)) {
+    fp_all <- read_in_fingerprints(subfolder_pos, folderwithSIRIUSfiles, fp_names_pos, fp_names_common)
+  }
+  
+  if(!is.null(subfolder_neg)) {
+    fp_neg <- read_in_fingerprints(subfolder_neg, folderwithSIRIUSfiles, fp_names_neg, fp_names_common)
+    if(dim(fp_all)[1] > 0) {
+      fp_all <- fp_all %>%
+        bind_rows(fp_neg)
+    } else {
+      fp_all <- fp_neg
+    }
+  }
+  
+  return(fp_all)
+}
+
+SiriusScoreRank1 <- function(subfolder_score, folderwithSIRIUSfiles){
+  scores_table <- tibble()
+  
+  print(paste0("Found ", length(subfolder_score), " SIRIUS score files", sep = " "))
+  ii = 1
+  
+  subfolder_score = subfolder_score[grepl("/scores", subfolder_score, fixed=TRUE)]
+  
+  for (filename in subfolder_score) {
+    if (grepl("/scores", filename, fixed=TRUE)){
+      
+      comp_name <- str_split(filename, "/")
+      folder_name = comp_name[[1]][1]
+      
+      foldernumber <- as.numeric(str_split(folder_name, "_")[[1]][1])
+      id <- as.character(tail(str_split(folder_name, "_")[[1]], n=1)) # id is taken as the last element of the folder name after splitting the string by underscores
+      predion <- as.character(sub("\\..*", "", comp_name[[1]][3]))
+      
+      suppressMessages(
+        data_here <- read_delim(paste(folderwithSIRIUSfiles, filename, sep = "/"), delim = "\t", col_names = F)
+      )
+      
+      SiriusScore <- data_here %>%
+        filter(X1 == "sirius.scores.SiriusScore")
+      
+      filedata <- tibble(id , foldernumber, predion) %>%
+        mutate(siriusscore = as.numeric(SiriusScore$X2))
+      
+      if(dim(scores_table)[1] > 0) {
+        scores_table <- scores_table%>%
+          bind_rows(filedata)
+      } else {
+        scores_table = filedata
+      }
+    }
+    ii = ii + 1
+    print(paste0("file: ", ii, "; percentage: ",round(ii/length(subfolder_score)*100), sep = ""))
+  }
+  print("Done!")
+  
+  scores_table = scores_table %>%
+    filter(grepl("[M+H]+", predion, fixed = TRUE) | grepl("[M]+", predion, fixed = TRUE)) %>%
+    mutate(siriusscore = as.numeric(siriusscore)) %>%
+    mutate(siriusscore = round(siriusscore, 10)) %>%
+    unique()
+  
+  data_scores <- scores_table %>%
+    select(-predion) %>% #if two compound have same siriusscore they get same rank
+    group_by(id, foldernumber) %>%
+    arrange(desc(siriusscore)) %>%
+    mutate(rank = row_number()) %>%
+    ungroup() %>%
+    left_join(scores_table,
+              by = c("id", "foldernumber", "siriusscore")) %>%
+    filter(rank == 1) %>%
+    select(-rank) %>%
+    unique()
+  
+  return(data_scores)
+}
+
+read_in_fingerprints <- function(subfolder, folderwithSIRIUSfiles, names_all_columns, names_common){
+  fingerprint_data <- tibble()
+  
+  print(paste0("Found ", length(subfolder), " SIRIUS FP files", sep = " "))
+  ii = 1
+  
+  for(direct in subfolder){
+    comp_name <- str_split(direct, "/")
+    folder_name = comp_name[[1]][1]
+    
+    sir_fold <- as.numeric(str_split(folder_name, "_")[[1]][1])
+    id_this <- as.character(tail(str_split(folder_name, "_")[[1]], n=1)) # id is taken as the last element of the folder name after splitting the string by underscores
+    pred_ion <- as.character(sub("\\..*", "", comp_name[[1]][3]))
+    
+    filedata <- read_delim(paste(folderwithSIRIUSfiles, direct, sep = "/"), delim = " ", col_names = FALSE, show_col_types = FALSE)
+    filedata <- as.data.frame(t(filedata))
+    filedata <- filedata %>%
+      mutate(predion = pred_ion,
+             id = id_this,
+             sir_fol_nr = sir_fold,
+             predform = as.character(sub("\\_.*", "", predion)))
+    fingerprint_data <- fingerprint_data %>%
+      bind_rows(filedata)
+    
+    ii = ii + 1
+    print(paste0("file: ", ii, "; percentage: ",round(ii/length(subfolder)*100), sep = ""))
+  }
+  print("Done!")
+  
+  if(nrow(fingerprint_data) != 0){
+    colnames(fingerprint_data) <- c(names_all_columns, "predion", "id", "foldernumber", "predform")
+    fingerprint_data = fingerprint_data %>%
+      select(id, foldernumber, predform, predion, all_of(names_common))
+  }
+  
+  return(fingerprint_data)
+}
+
+# ---- Read in the identification and FP results ----
+
+
+
+
+# top5
+stdmix_top5_SIRIUS_folder = "F:/Helen/WWTP_data_analysis/standards/top5/sirius_results/Area_stdmix_top5"
+#stdmix_top5_SIRIUS_results = summarized_SIRIUS_identification_results(stdmix_top5_SIRIUS_folder)
+stdmix_top5_SIRIUS_formulas = summarized_SIRIUS_formula_assignment(stdmix_top5_SIRIUS_folder)
+#stdmix_top5_SIRIUS_fingerprints = FpTableForPredictions(stdmix_top5_SIRIUS_folder)
+# write out .csv files
+setwd("F:/Helen/WWTP_data_analysis/")
+#write_delim(stdmix_top5_SIRIUS_results, "standards/top5/stdmix_top5_SIRIUS_results.csv")
+write_delim(stdmix_top5_SIRIUS_formulas, "standards/top5/stdmix_top5_SIRIUS_formulas.csv")
+#write_delim(stdmix_top5_SIRIUS_fingerprints, "standards/top5/stdmix_top5_SIRIUS_fingerprints.csv")
+
+# SWS
+stdmix_SWS_SIRIUS_folder = "F:/Helen/WWTP_data_analysis/standards/SWS/sirius_results/Area_stdmix_SWS"
+#stdmix_SWS_SIRIUS_results = summarized_SIRIUS_identification_results(stdmix_SWS_SIRIUS_folder)
+stdmix_SWS_SIRIUS_formulas = summarized_SIRIUS_formula_assignment(stdmix_SWS_SIRIUS_folder)
+#stdmix_SWS_SIRIUS_fingerprints = FpTableForPredictions(stdmix_SWS_SIRIUS_folder)
+# write out .csv files
+setwd("F:/Helen/WWTP_data_analysis/")
+#write_delim(stdmix_SWS_SIRIUS_results, "standards/SWS/stdmix_SWS_SIRIUS_results.csv")
+write_delim(stdmix_SWS_SIRIUS_formulas, "standards/SWS/stdmix_SWS_SIRIUS_formulas.csv")
+#write_delim(stdmix_SWS_SIRIUS_fingerprints, "standards/SWS/stdmix_SWS_SIRIUS_fingerprints.csv")
+
+
+# PCL1000 
+stdmix_PCL1000_SIRIUS_folder = "F:/Helen/WWTP_data_analysis/standards/PCL1000/sirius_results/Area_stdmix_PCL1000"
+stdmix_PCL1000_SIRIUS_results = summarized_SIRIUS_identification_results(stdmix_PCL1000_SIRIUS_folder)
+#stdmix_PCL1000_SIRIUS_formulas = summarized_SIRIUS_formula_assignment(stdmix_PCL1000_SIRIUS_folder)
+#stdmix_PCL1000_SIRIUS_fingerprints = FpTableForPredictions(stdmix_PCL1000_SIRIUS_folder)
+# write out .csv files
+setwd("F:/Helen/WWTP_data_analysis/")
+#write_delim(stdmix_PCL1000_SIRIUS_results, "standards/PCL1000/stdmix_PCL1000_SIRIUS_results.csv")
+write_delim(stdmix_PCL1000_SIRIUS_formulas, "standards/PCL1000/stdmix_PCL1000_SIRIUS_formulas.csv")
+#write_delim(stdmix_PCL1000_SIRIUS_fingerprints, "standards/PCL1000/stdmix_PCL1000_SIRIUS_fingerprints.csv")
+
+# DIA 
+stdmix_DIA_SIRIUS_folder = "F:/Helen/WWTP_data_analysis/standards/DIA/sirius_results/Area_stdmix_DIA"
+#stdmix_DIA_SIRIUS_results = summarized_SIRIUS_identification_results(stdmix_DIA_SIRIUS_folder)
+#stdmix_DIA_SIRIUS_formulas = summarized_SIRIUS_formula_assignment(stdmix_DIA_SIRIUS_folder)
+stdmix_DIA_SIRIUS_fingerprints = FpTableForPredictions(stdmix_DIA_SIRIUS_folder)
+# write out .csv files
+setwd("F:/Helen/WWTP_data_analysis/")
+#write_delim(stdmix_DIA_SIRIUS_results, "standards/DIA/stdmix_DIA_SIRIUS_results.csv")
+#write_delim(stdmix_DIA_SIRIUS_formulas, "standards/DIA/stdmix_DIA_SIRIUS_formulas.csv")
+write_delim(stdmix_DIA_SIRIUS_fingerprints, "standards/DIA/stdmix_DIA_SIRIUS_fingerprints.csv")
+
+
+
+# ---- Analysis of SIRIUS results ----
+standards_data = read_excel("230904_standards_metadata_retentiontime.xlsx") %>% 
+  drop_na(retention_time) %>% 
+  filter(comment != "isotope labelled") %>% 
+  select(name, MolecularFormula, InChI, spike_mz, retention_time) %>% 
+  rename(std_name = name,
+         std_molecularFormula = MolecularFormula,
+         std_InChI = InChI,
+         spike_rt = retention_time)
+
+
+# ## top5
+ identification_stdmix_results = "standards/top5/stdmix_top5_SIRIUS_results.csv"
+ fingerprints_stdmix =  "standards/top5/stdmix_top5_SIRIUS_fingerprints.csv"
+ msdial_file = "standards/top5/Area_stdmix_top5.txt"
+# ## SWS
+identification_stdmix_results = "standards/SWS/stdmix_SWS_SIRIUS_results.csv"
+fingerprints_stdmix =  "standards/SWS/stdmix_SWS_SIRIUS_fingerprints.csv"
+msdial_file = "standards/SWS/Area_stdmix_SWS.txt"
+# ## PCL1000
+ identification_stdmix_results = "standards/PCL1000/stdmix_PCL1000_SIRIUS_results.csv"
+ fingerprints_stdmix =  "standards/PCL1000/stdmix_PCL1000_SIRIUS_fingerprints.csv"
+ msdial_file = "standards/PCL1000/Area_stdmix_PCL1000.txt"
+# ## DIA
+ identification_stdmix_results = "standards/DIA/stdmix_DIA_SIRIUS_results.csv"
+ fingerprints_stdmix =  "standards/DIA/stdmix_DIA_SIRIUS_fingerprints.csv"
+ msdial_file = "standards/DIA/Area_stdmix_DIA.txt"
+
+
+#join the average_mz and average_rt from MSDIAL by msdial_id
+msdial_stdmix_data = read_delim(msdial_file, skip = 4) %>% 
+  clean_names() %>% 
+  #drop_na(ms_ms_spectrum) %>% 
+  select(alignment_id, average_rt_min, average_mz) %>% 
+  rename(msdial_id = alignment_id)
+
+
+# ********************************
+# ---- identification results ----
+# ********************************
+
+#read in identification results
+stdmix_SIRIUS_results = read_delim(identification_stdmix_results)
+#length(unique(stdmix_SIRIUS_results$id))
+stdmix_SIRIUS_results = stdmix_SIRIUS_results %>% 
+  mutate(msdial_id = as.numeric(gsub("Unknown", "", id))) %>% 
+  select(-id) %>% 
+  select(msdial_id, everything())
+
+length(unique(stdmix_SIRIUS_results$msdial_id))
+
+stdmix_SIRIUS_results = stdmix_SIRIUS_results %>% 
+  left_join(msdial_stdmix_data)
+
+#join the true standards information from standards data and filter based on delta_mz and delta_rt
+stdmix_SIRIUS_results = stdmix_SIRIUS_results %>% 
+  cross_join(standards_data) %>%
+  mutate(delta_mz = abs(average_mz - spike_mz),
+         delta_rt = abs(average_rt_min - spike_rt)) %>%
+  filter(delta_mz < 0.001,
+         delta_rt < 0.5)
+
+# does the inchi match the standards inchi?
+stdmix_SIRIUS_results = stdmix_SIRIUS_results %>% 
+  mutate(correct_identification = case_when(InChI == std_InChI ~ 1,
+                                            TRUE ~ 0))
+
+count_correctly_identified = stdmix_SIRIUS_results %>% 
+  filter(correct_identification == 1
+        # ,rank == 1
+         )
+
+length(unique(count_correctly_identified$std_name))
+
+
+
+# *************************************
+# ---- formula assignment results ----
+# *************************************
+
+# stdmix + msdial -> peaks for "detected" stds --> leftjoin formulas
+
+
+# ***************************************
+# ---- fingerprints and pred IE, Tox ----
+# ***************************************
+
+stdmix_fingerprints_results = read_delim(fingerprints_stdmix)
+
+stdmix_fingerprints_results = stdmix_fingerprints_results %>% 
+  mutate(msdial_id = as.numeric(gsub("Unknown", "", id))) %>% 
+  rename(folder_number = foldernumber) %>% 
+  select(-c(id, siriusscore)) %>% 
+  select(msdial_id, everything())
+
+stdmix_fingerprints_results = stdmix_fingerprints_results %>% 
+  left_join(msdial_stdmix_data) %>% 
+  mutate(retention_time = average_rt_min) 
+  
+stdmix_fingerprints_results = stdmix_fingerprints_results %>%
+  cross_join(standards_data) %>%
+  mutate(delta_mz = abs(average_mz - spike_mz),
+         delta_rt = abs(average_rt_min - spike_rt)) %>%
+  filter(delta_mz < 0.001,
+         delta_rt < 0.5)
+
+# predict for FPs
+data_list_sirius <- readRDS(system.file("model", "model_MS2Quant_xgbTree_allData.RData", package = "MS2Quant"))
+MS2Quant = data_list_sirius$model
+
+chemicals_predicted_IEs <- add_mobile_phase_composition(stdmix_fingerprints_results,
+                                                        eluent = "F:/Helen/WWTP_data_analysis/standards/eluent.csv",
+                                                        organic_modifier = "MeOH",
+                                                        pH_aq = 3.38)
+
+# Predict logIE values with MS2Quant for all FPs
+chemicals_predicted_IEs <- chemicals_predicted_IEs %>%
+  mutate(pred_logIE = predict(MS2Quant, newdata = chemicals_predicted_IEs))
+
+# Predict toxicity
+predicted_tox = FishLC50Prediction(stdmix_fingerprints_results %>% mutate(id = msdial_id, foldernumber = folder_number))
+
+
+# *********************************************************************
+# ---- areas from full scan together with pred tox and IE from MS2 ----
+# *********************************************************************
+
+# read in full scan data with areas and structure based predictions
+standards_fullscan_structure_predictions = read_delim("standards/standards_fullscans_IE_Tox_riskScore.csv")
+
+#add msdial id-s
+standards_fullscan_structure_predictions = standards_fullscan_structure_predictions %>% 
+  cross_join(msdial_stdmix_data) %>%
+  mutate(delta_mz = abs(average_mz - spike_mz),
+         delta_rt = abs(average_rt_min - spike_rt)) %>%
+  filter(delta_mz < 0.001,
+         delta_rt < 0.5)
+
+# add if it was correctly identified or not
+standards_fullscan_structure_predictions = standards_fullscan_structure_predictions %>% 
+  left_join(count_correctly_identified %>% 
+              select(msdial_id, rank))
+
+# add info about structural assignment, FP predicted IE and Tox, formulas??
+standards_fullscan_structure_predictions_here = standards_fullscan_structure_predictions %>% 
+  left_join(chemicals_predicted_IEs %>%  
+              rename(DIA_ms2_pred_logIE = pred_logIE) %>% 
+              select(DIA_ms2_pred_logIE, msdial_id, folder_number)) %>% 
+  left_join(predicted_tox %>% 
+              rename(msdial_id = id, 
+                     folder_number = foldernumber,
+                     DIA_ms2_LC50_predicted = LC50_predicted) %>% 
+              select(msdial_id, folder_number, DIA_ms2_LC50_predicted)) %>% 
+  mutate(DIA_risk_score = area/((10^DIA_ms2_pred_logIE)*(10^DIA_ms2_LC50_predicted)))
+
+standards_fullscan_structure_predictions_here = standards_fullscan_structure_predictions_here %>% 
+  drop_na(DIA_risk_score) %>% 
+  group_by(std_name) %>% 
+  filter(DIA_risk_score == max(DIA_risk_score)) %>% 
+  ungroup()
+
+
+length(unique(standards_fullscan_structure_predictions_here$std_name))
+
+#write_delim(standards_fullscan_structure_predictions_here, "standards/DIA/DIA_ms2_predicted_IE_tox_riskscore.csv", delim = ";")
+
+#DIA fingerprints are struggling!????
+
+
+# **************************************************************************
+# ---- put all results together from different data aqc. for comparison ----
+# **************************************************************************
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2")
+
+# read in full scan data with areas and structure based predictions
+standards_fullscan_structure = read_delim("1_standards/standards_fullscans_IE_Tox_riskScore.csv")
+
+# read in top5
+top5_ms2_analysis = read_delim("1_standards/top5/top5_ms2_predicted_IE_tox_riskscore.csv")
+top5_ms2_analysis = top5_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_top5 = rank)
+
+SWS_ms2_analysis = read_delim("1_standards/SWS/SWS_ms2_predicted_IE_tox_riskscore.csv")
+SWS_ms2_analysis = SWS_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_SWS = rank)
+
+PCL1000_ms2_analysis = read_delim("1_standards/PCL1000/PCL1000_ms2_predicted_IE_tox_riskscore.csv")
+PCL1000_ms2_analysis = PCL1000_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_PCL1000 = rank)
+
+DIA_ms2_analysis = read_delim("1_standards/DIA/DIA_ms2_predicted_IE_tox_riskscore.csv")
+DIA_ms2_analysis = DIA_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_DIA = rank)
+
+spikes_ms2_based_comparison_summary = standards_fullscan_structure %>% 
+  left_join(top5_ms2_analysis) %>% 
+  left_join(SWS_ms2_analysis) %>% 
+  left_join(PCL1000_ms2_analysis) %>% 
+  left_join(DIA_ms2_analysis)
+
+# Friedman test
+
+friedman_test_data  = spikes_ms2_based_comparison_summary %>% 
+  select(std_name, risk_score, top5_risk_score, SWS_risk_score, PCL1000_risk_score, DIA_risk_score) %>% 
+  mutate(risk_score = log10(risk_score),
+         top5_risk_score = log10(top5_risk_score),
+         SWS_risk_score = log10(SWS_risk_score),
+         PCL1000_risk_score = log10(PCL1000_risk_score),
+         DIA_risk_score = log10(DIA_risk_score)) %>% 
+  gather("method", "PS", - std_name)
+
+friedman.test(friedman_test_data$PS, friedman_test_data$method, friedman_test_data$std_name)
+
+
+# for each method, how many chemicals are only triggered by this one method? (argument for complementary)
+method_comparison  = spikes_ms2_based_comparison_summary %>% 
+  select(std_name, top5_risk_score, SWS_risk_score, PCL1000_risk_score, DIA_risk_score) 
+
+Top5 <- method_comparison[!is.na(method_comparison$top5_risk_score),"std_name"]
+SWS <- method_comparison[!is.na(method_comparison$SWS_risk_score),"std_name"]
+PCL1000 <- method_comparison[!is.na(method_comparison$PCL1000_risk_score),"std_name"]
+DIA <- method_comparison[!is.na(method_comparison$DIA_risk_score),"std_name"]
+
+input <- list(Top5=Top5, SWS=SWS, PCL1000=PCL1000, DIA=DIA)
+venn(input)
+
+
+## plotting results
+
+linmod = mgcv::gam(log10(risk_score)~log10(DIA_risk_score), data = spikes_ms2_based_comparison_summary)
+summary(linmod)
+plt1 = ggplot(data = spikes_ms2_based_comparison_summary) + 
+  geom_abline(intercept = 0, slope = 1, color = basecolor, size = 1) +
+  geom_point(mapping = aes(x = log10(top5_risk_score), y = log10(risk_score)),  size = 2.5, alpha = 0.75, color = "#1A1E39") +
+  scale_x_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  scale_y_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  xlab("log10(PS) (Top5)") +
+  ylab("log10(PS) (Structure)") +
+  theme(plot.margin = margin(0, 0, 0, 0, unit = "cm")) +
+  my_theme
+plt2 = ggplot(data = spikes_ms2_based_comparison_summary) + 
+  geom_abline(intercept = 0, slope = 1, color = basecolor, size = 1) +
+  geom_point(mapping = aes(x = log10(SWS_risk_score), y = log10(risk_score)), size = 2.5, alpha = 0.75, color = "#434973") +
+  scale_x_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  scale_y_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  xlab("log10(PS) (SWS)") +
+  theme(axis.text.y = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, unit = "cm")) +
+  ylab("") +
+  my_theme
+plt3 = ggplot(data = spikes_ms2_based_comparison_summary) + 
+  geom_abline(intercept = 0, slope = 1, color = basecolor, size = 1) +
+  geom_point(mapping = aes(x = log10(PCL1000_risk_score), y = log10(risk_score)), size = 2.5, alpha = 0.75, color = "#7A84C4") +
+  scale_x_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  scale_y_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  xlab("log10(PS) (PCL1000)") +
+  theme(axis.text.y = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, unit = "cm")) +
+  ylab("") +
+  my_theme
+plt4 = ggplot(data = spikes_ms2_based_comparison_summary) + 
+  geom_abline(intercept = 0, slope = 1, color = basecolor, size = 1) +
+  geom_point(mapping = aes(x = log10(DIA_risk_score), y = log10(risk_score)), size = 2.5, alpha = 0.75, color = "#BAC2F3") +
+  scale_x_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  scale_y_continuous(limits = c(3,11), breaks = c(4,6,8,10)) +
+  xlab("log10(PS) (DIA)") +
+  theme(axis.text.y = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, unit = "cm")) +
+  ylab("") +
+  my_theme
+
+joined_plot = (plt1 | plt2 | plt3 | plt4) #plt1 + plt2 + plt3 + plt4 
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/")
+# ggsave(joined_plot, filename = "1_standards/Figures/240104_PriorityScore_correlations.svg", width=19, height=6, units = "cm")
+# ggsave(joined_plot, filename = "1_standards/Figures/240104_PriorityScore_correlations.png", width=19, height=6, units = "cm")
+
+
+data_ridges = spikes_ms2_based_comparison_summary %>% 
+  select(risk_score, top5_risk_score, SWS_risk_score, PCL1000_risk_score, DIA_risk_score) %>% 
+  rename('Structure' = risk_score,
+         Top5  = top5_risk_score,
+         SWS = SWS_risk_score,
+         PCL1000 = PCL1000_risk_score,
+         DIA = DIA_risk_score) %>% 
+  gather("method", "riskScore") %>% 
+  drop_na()
+
+data_ridges$method = factor(data_ridges$method, levels = c("DIA", "PCL1000", "SWS", "Top5", 'Structure'))
+
+
+ggplot(data_ridges, aes(x = log10(riskScore), y = method, fill = method)) +
+  geom_density_ridges() +
+  #scale_fill_manual(values=c("#2B3260", "#41497D", "#6069A3", "#7A84C4", "#9d9d9d")) +
+  my_theme +
+  #theme_ridges() + 
+  theme(legend.position = "none") +
+  theme(axis.title.y = element_blank()) 
+# alternatively density plots
+data_ridges$method = factor(data_ridges$method, levels = c('Structure', "Top5", "SWS", "PCL1000", "DIA"))
+
+density_comparison = ggplot(data = data_ridges) +
+  geom_density(mapping = aes(x= log10(riskScore), y = after_stat(count), fill = method) , 
+                alpha = 1) +
+  scale_fill_manual(values=c("#9d9d9d","#1A1E39", "#434973", "#7A84C4", "#BAC2F3" )) +
+  facet_wrap(~method, ncol = 1, strip.position = "left") +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size = fontsize, color = basecolor)
+        #strip.text.x = element_blank()
+        ) +
+  my_theme +
+  theme(axis.title.y = element_blank(),
+        #axis.title.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.position = "none") +
+  xlab("log10(PS)") +
+  xlim(c(4,11))
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/")
+ggsave(density_comparison,  filename = "1_standards/Figures/240104_std_risk_densityplots.png", width=6, height=15, units = "cm", device = NULL)
+ggsave(density_comparison, filename = "1_standards/Figures/240104_std_risk_densityplots.svg", width=6, height=15, units = "cm")
+
+
+## heatmap for top25 high risk chemicals?
+data_heatmap = spikes_ms2_based_comparison_summary %>% 
+  select(std_name, risk_score, top5_risk_score, SWS_risk_score, PCL1000_risk_score, DIA_risk_score) %>% 
+  arrange(desc(risk_score)) %>% 
+  head(20) %>% 
+  arrange(risk_score) 
+data_heatmap_gathered = data_heatmap %>% 
+  rename(Structure = risk_score,
+         Top5  = top5_risk_score,
+         SWS = SWS_risk_score,
+         PCL1000 = PCL1000_risk_score,
+         DIA = DIA_risk_score) %>% 
+  gather("method", "riskScore", - std_name) %>% 
+  drop_na()
+
+data_heatmap_gathered$std_name = factor(data_heatmap_gathered$std_name, levels=(data_heatmap$std_name), ordered = T)
+data_heatmap_gathered$method = factor(data_heatmap_gathered$method, levels = c("Structure", "Top5", "SWS", "PCL1000", "DIA"))
+
+
+heatmap =  ggplot(data_heatmap_gathered, aes(y = std_name, x= method, fill=log10(riskScore))) + 
+  geom_tile() +
+  scale_fill_gradient(high = "#1A1E39", low = "#9BA7EB") +
+  my_theme +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+ggsave(heatmap,  filename = "figures/231006_std_risk_heatmap.png", width=23, height=14, units = "cm", device = NULL)
+ggsave(heatmap, filename = "figures/231006_std_risk_heatmap.svg", width=23, height=14, units = "cm")
+
+
+#########
+# ---- bar plot for detected chemicals ----
+setwd("F:/Helen/WWTP_data_analysis/standards")
+barplot_data = read_delim("1_standards/methods_summary_barplot.csv")
+
+barplot_data = barplot_data %>% 
+  select(sample, potentially_seen, msms_triggered_for_spikes, fingerprints_calculated, identified_rank1) %>% 
+  gather("count", "value", -sample)
+
+barplot_data$sample = factor(barplot_data$sample, levels = c("Top5", "SWS", "PCL1000", "DIA"))
+barplot_data$count = factor(barplot_data$count, levels = c("potentially_seen", "msms_triggered_for_spikes", "fingerprints_calculated", "identified_rank1"))
+
+barplot = ggplot(barplot_data, mapping = aes(x=count, y = value)) + 
+  geom_bar(stat="identity", mapping = aes(fill = count)) +
+  geom_text(aes(label=value), vjust=-0.3, color=basecolor, size=fontsize/.pt, family = font)+
+  facet_wrap(~sample, ncol = 4, strip.position = "bottom") +
+  scale_fill_manual(values=c("#171717", "#515151", "#959595", "#C5C5C5")) +
+  my_theme + 
+  scale_x_discrete(expand = c(0.2, 0.2)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line.x = element_blank(),
+        strip.text = element_text(size = fontsize, color = basecolor),
+        #strip.background =element_rect(fill=sample),
+        text = element_text(family = font, size = fontsize, color = basecolor),
+        legend.position = "top")
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/")
+# ggsave(barplot, filename = "1_standards/Figures/240208_barplot.svg", width=19, height=10, units = "cm")
+# ggsave(barplot, filename = "1_standards/Figures/240208_barplot.png", width=19, height=10, units = "cm")
+
+
+
+#---- barplot smaller ----
+setwd("F:/Helen/WWTP_data_analysis/standards")
+barplot_data = read_delim("methods_summary_barplot.csv")
+
+barplot_data = barplot_data %>% 
+  select(sample, potentially_seen, msms_triggered_for_spikes, fingerprints_calculated, identified_rank1) %>% 
+  #filter(sample != "DIA") %>% 
+  gather("count", "value", -sample)
+
+barplot_data$sample = factor(barplot_data$sample, levels = c("Top5", "SWS", "PCL1000", "DIA"))
+barplot_data$count = factor(barplot_data$count, levels = c("potentially_seen", "msms_triggered_for_spikes", "fingerprints_calculated", "identified_rank1"))
+
+barplot_std = ggplot(barplot_data, mapping = aes(x=count, y = value)) + 
+  geom_bar(stat="identity", mapping = aes(fill = count)) + 
+  geom_text(aes(label=value), vjust=-0.3, color=basecolor, size=fontsize/.pt, family = font)+
+  facet_wrap(~sample, ncol = 4, strip.position = "bottom") +
+  scale_fill_manual(values=c("#2B3260", "#41497D", "#6069A3","#7A85C9", "#9BA7EB")) +
+  my_theme + 
+  scale_x_discrete(expand = c(0.2, 0.2)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line.x = element_blank(),
+        text = element_text(family = font, size = fontsize, color = basecolor),
+        panel.spacing = unit(1.3, "lines"),
+        legend.position = "right") +
+  ylim(c(0,125))
+
+ggsave(barplot_std,  filename = "figures/231015_std_barplot.png", width=30, height=13, units = "cm", device = NULL)
+ggsave(barplot_std, filename = "figures/231015_std_barplot.svg", width=30, height=13, units = "cm")
+
+
+
+##
+all_K2_together_mod = all_K2_together %>% 
+  mutate(same_ident = case_when(K2_EF_top5_rank1_inchi == K2_EF_PCL1000_rank1_inchi ~ 1,
+                                TRUE ~ 0))
+

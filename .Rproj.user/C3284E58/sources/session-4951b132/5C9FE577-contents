@@ -1,0 +1,182 @@
+library(tidyverse)
+library(MS2Quant)
+library(MS2Tox)
+library(readxl)
+library(OrgMassSpecR)
+library(patchwork)
+library(rcdk)
+library(caret)
+library(janitor)
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/")
+
+molecularmass <- function(smiles){
+  #convert SMILES to chemical formula
+  molecule <- parse.smiles(smiles)[[1]]
+  formula <- get.mol2formula(molecule,charge=0)
+  formula <- formula@string
+  #calcuate molecular weight
+  MW <- MolecularWeight(formula = ListFormula(formula))
+  return(MW)
+}
+
+## read in the file with standards information
+standards_data = read_excel("1_standards/230904_standards_metadata_retentiontime.xlsx") %>% 
+  drop_na(retention_time) %>% 
+  filter(comment != "isotope labelled") %>% 
+  select(name, conc_mM, MolecularFormula, InChI, CanonicalSMILES, spike_mz, retention_time) %>% 
+  rename(std_name = name,
+         std_molecularFormula = MolecularFormula,
+         std_InChI = InChI,
+         #spike_rt = retention_time,
+         SMILES = CanonicalSMILES) %>% 
+  group_by(SMILES) %>% 
+  mutate(exactMass = molecularmass(SMILES),
+         spike_rt = retention_time) %>% 
+  ungroup()
+
+# ***********************************************************************************************************************
+# ---- Standards IE and LC50 predicted from structure, risk score using Areas from 3 full scans processed in MS-DIAL ----
+# ***********************************************************************************************************************
+
+##predict the IEs for all chemicals UNDER DIFFERENT eluent conditions (gradient-based)
+predicted_IEs = MS2Quant_predict_IE(chemicals_for_IE_prediction = standards_data,
+                              eluent = "C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/1_standards/eluent.csv",
+                              #fingerprints = path_suspects_sirius_project_folder,
+                              organic_modifier = "MeOH",
+                              pH_aq = 3.38)
+standards_data_structure_predictions = predicted_IEs$chemicals_predicted_IEs
+
+##predict toxicity
+predicted_tox = LC50fromSMILES(standards_data)
+
+##calculate risk score if the intensity was the same for all
+standards_data_structure_predictions = standards_data_structure_predictions %>% 
+  left_join(predicted_tox) %>% 
+  mutate(risk_score_predLC50 = conc_mM/(10^LC50_predicted),
+         priority_factor = 1/((10^pred_logIE)*(10^LC50_predicted)))
+
+## read in MS-DIAL alignment file of stdmix full scans, and find mathces with standards
+stdmix_fullscans_alignment = read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/5_processing_MS2/1_standards/230926_stdmix_area_alignment_noBlankSub.txt", 
+                                         skip = 4) %>% 
+  clean_names()
+
+standards_data_structure_predictions_with_alignment = standards_data_structure_predictions %>% 
+  cross_join(stdmix_fullscans_alignment %>% 
+               select(alignment_id, average_rt_min, average_mz, c(33:42)) %>% 
+               mutate(signal_to_noise = s_40/b_39) %>% 
+               filter(signal_to_noise > 3)) %>% 
+  mutate(delta_mz = abs(average_mz - spike_mz),
+         delta_rt = abs(average_rt_min - spike_rt))
+
+stdmix_msdial_matched = standards_data_structure_predictions_with_alignment %>%
+  filter(delta_mz < 0.001,
+         delta_rt < 0.5)
+
+length(unique(standards_data_structure_predictions_with_alignment$std_name))
+length(unique(stdmix_msdial_matched$std_name))
+setdiff(unique(standards_data_structure_predictions_with_alignment$std_name), unique(stdmix_msdial_matched$std_name))
+
+# find biggest area for each as it seems to correspond to the correct peak. For Metolachlor-OA, Atrazine-desethyl-2-hydroxy, tridemorph combine areas!
+stdmix_msdial_matched_areas = stdmix_msdial_matched %>% 
+  group_by(std_name) %>% 
+  mutate(area = case_when(std_name %in% c("Metolachlor-OA", "Atrazine-desethyl-2-hydroxy", "tridemorph") ~ sum(s_40),
+                          TRUE ~ max(s_40))) %>% 
+  ungroup() %>% 
+  mutate(priority_score = area/((10^pred_logIE)*(10^LC50_predicted)))
+
+## put the data back together with spikes for comparison for undetected chemicals
+standards_data_structure_predictions = standards_data_structure_predictions %>% 
+  left_join(stdmix_msdial_matched_areas %>%  select(std_name, area, risk_score_predLC50, priority_score) %>%  unique())
+
+#write_delim(standards_data_structure_predictions, "1_standards/240104_standards_fullscans_IE_Tox_riskScore.csv")
+
+
+
+## density plots for tox, IE, and risk
+IE_density_plot = ggplot(data = standards_data_structure_predictions) +
+  geom_density(mapping = aes(x=pred_logIE), fill = "lightblue") +
+  theme_classic()
+
+tox_density_plot = ggplot(data = standards_data_structure_predictions) +
+  geom_density(mapping = aes(x=LC50_predicted), fill = "pink") +
+  theme_classic()
+
+risk_density_plot = ggplot(data = standards_data_structure_predictions) +
+  geom_density(mapping = aes(x=log10(risk_score)), fill = "lightgreen") +
+  theme_classic()
+
+plot_combined = IE_density_plot/tox_density_plot/risk_density_plot
+
+summary = standards_data_structure_predictions %>% 
+  arrange(desc(risk_score)) %>% 
+  select(std_name, pred_logIE, LC50_predicted, risk_score) %>%
+  mutate(risk_score = log10(risk_score)) %>% 
+  head(10)
+
+
+## ---- adding DSSTox identifiers to find true LC50 values ----
+
+#read in DSSTox id and InChI pairs info
+DSSTox_inchi = read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/05_MixTox_synthetic/toxicity_data/Pille_comptox/DSSTox_Identifiers_and_CASRN_2021r1.csv")
+# some inchi have InChI=1S/ and others InChI=1/ ???
+
+DSSTox_inchi = DSSTox_inchi %>% 
+  select(dtxsid, inchi) %>% 
+  mutate(inchi = str_replace(inchi, "InChI=1/", "InChI=1S/")) %>% 
+  rename(std_InChI = inchi) %>% 
+  unique()
+
+standards_data_structure_predictions = standards_data_structure_predictions %>% 
+  left_join(DSSTox_inchi)
+
+
+## read in Toxicity data compiled by Pille:
+
+tox_data = read_delim("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/05_MixTox_synthetic/toxicity_data/Pille_comptox/final_model_toxdata.txt")
+
+standards_data_structure_predictions = standards_data_structure_predictions %>%
+  select(-exactMass) %>% 
+  left_join(tox_data %>% 
+              filter(!species_common %in% c("green algae", "water flea")))
+
+
+# calc risk score:
+
+standards_data_structure_predictions = standards_data_structure_predictions %>% 
+  mutate(risk_score = conc_mM/(10^aver_toxval_cm))
+
+
+risk_priority = ggplot(standards_data_structure_predictions) +
+  geom_point(mapping = aes(x = log10(risk_score),
+                           y = log10(priority_score),
+                           color = std_name)) +
+  theme_classic() +
+  theme(legend.position = "none",
+        aspect.ratio = 1)
+#116 chemicals got dtsxid
+#35 chemicals had fish acute tox available
+
+
+priority_area = ggplot(standards_data_structure_predictions) +
+  geom_point(mapping = aes(x = log10(area),
+                           y = log10(priority_score))) +
+  theme_classic() +
+  theme(legend.position = "none",
+        aspect.ratio = 1)
+
+priority_IE = ggplot(standards_data_structure_predictions) +
+  geom_point(mapping = aes(x = pred_logIE,
+                           y = log10(priority_score))) +
+  theme_classic() +
+  theme(legend.position = "none",
+        aspect.ratio = 1)
+
+priority_tox = ggplot(standards_data_structure_predictions) +
+  geom_point(mapping = aes(x = LC50_predicted,
+                           y = log10(priority_score))) +
+  theme_classic() +
+  theme(legend.position = "none",
+        aspect.ratio = 1)
+
+

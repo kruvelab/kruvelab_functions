@@ -1,0 +1,93 @@
+library(tidyverse)
+library(janitor)
+
+
+setwd("C:/Users/HelenSepman/OneDrive - Kruvelab/Helen_phd/projects_measurements/Lisa_PCL/")
+
+# read in SWS inclusion list and PCL1000 list for stdmix
+# what is the percentage of masses in list vs triggered (aka with MS2)?
+# what is the percentage of common with SWS and PCL1000 vs how many are triggered with SWS and how many with PCL1000?
+
+SWS_list = read_delim("1_standards_sample_preparation/SWS_inclusionList_metadata.csv") %>%  clean_names()
+
+PCL1000_stdmix = read_delim("3_processing_fullscans_and_generating_prioritylists/3_priorityScores/priority_lists/PCL1000/PCL_1000_stdmix.csv")
+
+
+
+common = PCL1000_stdmix %>%
+  select(average_mz) %>%
+  unique() %>%
+  left_join(SWS_list %>%
+              select(mass_m_z), by = character()) %>%
+  mutate(delta_mz = abs(mass_m_z - average_mz)) %>%
+  mutate(ppm_range = (mass_m_z * 10^6 / (10^6 - 10)) - mass_m_z) %>% 
+  filter(delta_mz < ppm_range)
+
+length(unique(common$average_mz))
+
+
+
+#### experimental SIRIUS
+
+# read in full scan data with areas and structure based predictions
+standards_fullscan_structure = read_delim("5_processing_MS2/1_standards/standards_fullscans_IE_Tox_riskScore.csv")
+
+SWS_ms2_analysis = read_delim("5_processing_MS2/1_standards/SWS/SWS_ms2_predicted_IE_tox_riskscore.csv")
+SWS_ms2_analysis = SWS_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_SWS = rank)
+
+PCL1000_ms2_analysis = read_delim("5_processing_MS2/1_standards/PCL1000/PCL1000_ms2_predicted_IE_tox_riskscore.csv")
+PCL1000_ms2_analysis = PCL1000_ms2_analysis %>% 
+  select(-c(msdial_id, folder_number, delta_mz, delta_rt, average_rt_min, average_mz)) %>% 
+  rename(rank_PCL1000 = rank)
+
+spikes_ms2_based_comparison_summary = standards_fullscan_structure %>% 
+  left_join(SWS_ms2_analysis) %>% 
+  left_join(PCL1000_ms2_analysis) %>% 
+  # left_join(SWS_list %>% 
+  #             select(mass_m_z), by = character()) %>% 
+  # mutate(SWS_spike_delta_mz = abs(spike_mz - mass_m_z)) %>% 
+  # filter(SWS_spike_delta_mz < 0.3) %>% 
+  # group_by(std_name) %>%
+  # filter(SWS_spike_delta_mz == min(SWS_spike_delta_mz)) %>%
+  # ungroup() %>%
+  # select(-mass_m_z) %>% 
+  left_join(common %>% 
+              select(average_mz, ppm_range), by = character()) %>% 
+  mutate(delta_mz = abs(spike_mz - average_mz)) %>% 
+  filter(delta_mz < ppm_range) %>% 
+  select(-delta_mz, - ppm_range) %>% 
+  group_by(std_name) %>% 
+  filter(average_mz == min(average_mz)) %>% 
+  ungroup() %>% 
+  unique()
+
+
+
+#### PCL1000 and spikes common
+common_PCL1000 = PCL1000_stdmix %>%
+  select(average_mz) %>%
+  unique() %>%
+  left_join(standards_fullscan_structure %>%
+              select(spike_mz), by = character()) %>%
+  mutate(delta_mz = abs(spike_mz - average_mz)) %>%
+  mutate(ppm_range = (average_mz * 10^6 / (10^6 - 10)) - average_mz) %>% 
+  filter(delta_mz < ppm_range)
+
+length(unique(common$spike_mz))
+
+
+#### SWS and spikes common
+common_SWS = SWS_list %>%
+  select(mass_m_z) %>%
+  unique() %>%
+  left_join(standards_fullscan_structure %>%
+              select(spike_mz), by = character()) %>%
+  mutate(delta_mz = abs(spike_mz - mass_m_z)) %>%
+  mutate(ppm_range = (mass_m_z * 10^6 / (10^6 - 10)) - mass_m_z) %>% 
+  filter(delta_mz < ppm_range)
+
+length(unique(common_SWS$spike_mz))
+
+
