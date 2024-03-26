@@ -2,8 +2,11 @@
 
 export(SMILES2SIRIUS_fp)
 export(polarity_index)
+export(read_mzML)
+import(Spectra)
 import(data.table)
 import(dplyr)
 import(fingerprint)
 import(rJava)
 import(rcdk)
+import(tidyverse)
